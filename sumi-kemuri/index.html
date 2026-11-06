@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="白黒だけで、墨が空間を静かに落ちていく流体シミュレーション。">
+<style>*{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}</style>
+<title>墨煙 Sumi Kemuri</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed fluid canvas; quiet title at top-left, a folding control strip at bottom-left. Monochrome only, paper or night. */
+:root{
+  --paper:#f3f2ee; --ink:#0d0d0d; --ui-bg:rgba(243,242,238,.82); --ui-fg:#1a1a1a; --ui-mute:#6d6d6a; --line:rgba(0,0,0,.14);
+  --f-display:"Shippori Mincho","Hiragino Mincho ProN","Yu Mincho",serif;
+  --f-ui:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  color-scheme:light;
+}
+:root.night{
+  --paper:#0b0b0b; --ink:#efefea; --ui-bg:rgba(11,11,11,.78); --ui-fg:#ecebe6; --ui-mute:#8f8f8a; --line:rgba(255,255,255,.16);
+  color-scheme:dark;
+}
+html,body{height:100%;}
+body{background:var(--paper);color:var(--ui-fg);font-family:var(--f-ui);overflow:hidden;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
+canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:crosshair;}
+.title{position:fixed;top:calc(18px + env(safe-area-inset-top,0px));left:max(20px,env(safe-area-inset-left,0px));pointer-events:none;mix-blend-mode:difference;color:#fff;}
+.title h1{font-family:var(--f-display);font-weight:700;font-size:clamp(26px,4vw,40px);letter-spacing:.12em;margin:0;line-height:1;}
+.title p{margin:.6em 0 0;font-size:11px;letter-spacing:.18em;text-transform:uppercase;opacity:.75;}
+.hint{position:fixed;top:calc(22px + env(safe-area-inset-top,0px));right:max(20px,env(safe-area-inset-right,0px));font-size:12px;letter-spacing:.08em;color:var(--ui-mute);text-align:right;line-height:1.7;pointer-events:none;}
+.panel{position:fixed;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  width:min(320px,calc(100vw - 32px));background:var(--ui-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:4px;font-size:12px;}
+.panel summary{list-style:none;cursor:pointer;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;letter-spacing:.14em;font-weight:500;}
+.panel summary::-webkit-details-marker{display:none}
+.panel summary span:last-child{font-family:ui-monospace,monospace;color:var(--ui-mute);font-size:11px;font-variant-numeric:tabular-nums;}
+.body{padding:4px 14px 14px;display:grid;gap:10px;}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:3px;overflow:hidden;}
+.seg button{all:unset;text-align:center;padding:7px 0;cursor:pointer;color:var(--ui-mute);letter-spacing:.1em;}
+.seg button[aria-pressed="true"]{background:var(--ui-fg);color:var(--paper);}
+.row{display:grid;grid-template-columns:4.5em 1fr 2.6em;align-items:center;gap:10px;}
+.row label{color:var(--ui-mute);letter-spacing:.08em;}
+.row output{text-align:right;font-family:ui-monospace,monospace;font-size:11px;font-variant-numeric:tabular-nums;}
+input[type=range]{width:100%;accent-color:var(--ui-fg);}
+.btns{display:flex;gap:8px;flex-wrap:wrap;}
+.btns button{all:unset;cursor:pointer;padding:6px 12px;border:1px solid var(--line);border-radius:3px;letter-spacing:.1em;}
+.btns button:hover{border-color:var(--ui-fg);}
+button:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid var(--ui-fg);outline-offset:2px;}
+.cap{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:flex-end;gap:10px;}
+.shoot{all:unset;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:999px;background:var(--ui-fg);color:var(--paper);font-size:13px;letter-spacing:.14em;box-shadow:0 2px 14px rgba(0,0,0,.18);}
+.shoot i{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;box-sizing:border-box;}
+.shoot:active{transform:scale(.97);}
+.shoot:focus-visible{outline:2px solid var(--ui-fg);outline-offset:3px;}
+.shelf{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:min(360px,calc(100vw - 32px));}
+.shelf figure{margin:0;position:relative;width:76px;border:1px solid var(--line);background:var(--ui-bg);border-radius:3px;overflow:hidden;}
+.shelf img{display:block;width:100%;aspect-ratio:var(--ar,1.6);object-fit:cover;}
+.shelf button{all:unset;cursor:pointer;display:block;width:100%;text-align:center;font-size:10px;letter-spacing:.1em;padding:4px 0;color:var(--ui-fg);}
+.shelf button:hover{background:var(--line);}
+.flash{position:fixed;inset:0;background:var(--paper);opacity:0;pointer-events:none;transition:opacity .5s ease;}
+.flash.on{opacity:.55;transition:none;}
+.toast{position:fixed;left:50%;top:calc(20px + env(safe-area-inset-top,0px));transform:translateX(-50%);background:var(--ui-fg);color:var(--paper);padding:8px 14px;border-radius:3px;font-size:12px;letter-spacing:.08em;}
+@media (max-width:520px){.panel{bottom:calc(76px + env(safe-area-inset-bottom,0px));}}
+.err{position:fixed;inset:0;display:grid;place-items:center;text-align:center;padding:24px;font-size:14px;line-height:1.8;}
+@media (max-width:520px){.hint{display:none}}
+</style>
+
+</head>
+<body>
+<canvas id="c" aria-label="墨が空間を立ち昇る流体シミュレーション"></canvas>
+<div class="title"><h1>墨煙</h1><p>Sumi · falling ink</p></div>
+<div class="hint">ドラッグ：墨を流す<br>クリック：一滴垂らす<br>Space：形を変える<br>C：この瞬間を撮る</div>
+
+<details class="panel" open id="panel">
+  <summary><span>CONTROL</span><span id="cycle">20s</span></summary>
+  <div class="body">
+    <div class="seg" role="group" aria-label="流れの向き">
+      <button id="dirUp" aria-pressed="false">立ち昇る ↑</button>
+      <button id="dirDown" aria-pressed="true">垂れ落ちる ↓</button>
+    </div>
+    <div class="row"><label for="speed">速さ</label><input id="speed" type="range" min="0.05" max="1.5" step="0.01" value="0.35"><output id="speedO">0.35</output></div>
+    <div class="row"><label for="amt">墨の量</label><input id="amt" type="range" min="0" max="2" step="0.01" value="1"><output id="amtO">1.00</output></div>
+    <div class="row"><label for="buoy">浮力</label><input id="buoy" type="range" min="0" max="2" step="0.01" value="0.45"><output id="buoyO">0.45</output></div>
+    <div class="row"><label for="curl">渦</label><input id="curl" type="range" min="0" max="60" step="1" value="8"><output id="curlO">8</output></div>
+    <div class="row"><label for="fade">消え方</label><input id="fade" type="range" min="0" max="1.5" step="0.01" value="0.22"><output id="fadeO">0.22</output></div>
+    <div class="row"><label for="bleed">滲み</label><input id="bleed" type="range" min="0" max="2" step="0.01" value="1"><output id="bleedO">1.00</output></div>
+    <div class="btns">
+      <button id="auto" aria-pressed="true">自動変化 ON</button>
+      <button id="invert">白黒反転</button>
+      <button id="clear">消す</button>
+      <button id="pause">停止</button>
+    </div>
+  </div>
+</details>
+
+<div class="flash" id="flash"></div>
+<div class="toast" id="toast" hidden></div>
+<div class="cap">
+  <div class="shelf" id="shelf" aria-label="撮った瞬間"></div>
+  <button class="shoot" id="shoot" title="C キーでも撮れます"><i></i>この瞬間を撮る</button>
+</div>
+<script>
+(()=>{
+const canvas=document.getElementById('c');
+const gl=canvas.getContext('webgl2',{alpha:false,depth:false,stencil:false,antialias:false,preserveDrawingBuffer:false});
+function fail(msg){document.body.insertAdjacentHTML('beforeend',`<div class="err">${msg}</div>`);}
+if(!gl){fail('このブラウザでは WebGL2 が使えません。<br>最新の Chrome / Safari / Firefox で開いてください。');return;}
+if(!gl.getExtension('EXT_color_buffer_float')&&!gl.getExtension('EXT_color_buffer_half_float')){fail('浮動小数点テクスチャに対応していないため実行できません。');return;}
+gl.getExtension('OES_texture_float_linear');
+
+/* ---------- shaders ---------- */
+const VS=`#version 300 es
+in vec2 aPos;uniform vec2 texel;out vec2 vUv,vL,vR,vT,vB;
+void main(){vUv=aPos*.5+.5;vL=vUv-vec2(texel.x,0.);vR=vUv+vec2(texel.x,0.);vT=vUv+vec2(0.,texel.y);vB=vUv-vec2(0.,texel.y);gl_Position=vec4(aPos,0.,1.);}`;
+const H=`#version 300 es
+precision highp float;precision highp sampler2D;in vec2 vUv,vL,vR,vT,vB;out vec4 o;`;
+const NOISE=`
+float hash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
+float vnoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
+ return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);}
+float fbm(vec2 p){float s=0.,a=.5;for(int i=0;i<4;i++){s+=a*vnoise(p);p*=2.03;a*=.5;}return s;}`;
+
+const FS={
+splat:H+`uniform sampler2D uT;uniform float aspect,radius;uniform vec3 color;uniform vec2 point;uniform float seed;${NOISE}
+void main(){vec2 p=vUv-point;p.x*=aspect;
+ float n=fbm(vUv*vec2(aspect,1.)*18.+seed);
+ float g=exp(-dot(p,p)/(radius*(.55+n*.9)));
+ o=vec4(texture(uT,vUv).xyz+g*color,1.);}`,
+advect:H+`uniform sampler2D uV,uS;uniform vec2 texel;uniform float dt,diss,dir,edge;
+void main(){vec2 c=vUv-dt*texture(uV,vUv).xy*texel;vec4 r=texture(uS,c)/(1.+diss*dt);
+ float ex=dir>0.?1.-vUv.y:vUv.y;r*=1.-edge*(1.-smoothstep(0.,.14,ex))*.06;o=r;}`,
+force:H+`uniform sampler2D uV,uD;uniform float dt,buoy,dir,time,turb,aspect;${NOISE}
+void main(){vec2 v=texture(uV,vUv).xy;float d=texture(uD,vUv).r;
+ v.y+=dir*buoy*min(d,3.)*dt*90.;
+ vec2 q=vUv*vec2(aspect,1.)*2.2+vec2(0.,-dir*time*.08);float e=.01;
+ float n0=fbm(q+time*.03),nx=fbm(q+vec2(e,0)+time*.03),ny=fbm(q+vec2(0,e)+time*.03);
+ vec2 cn=vec2(ny-n0,-(nx-n0))/e;
+ v+=cn*turb*dt*min(d,1.5)*18.;
+ o=vec4(v,0.,1.);}`,
+curl:H+`uniform sampler2D uV;void main(){float L=texture(uV,vL).y,R=texture(uV,vR).y,T=texture(uV,vT).x,B=texture(uV,vB).x;o=vec4(.5*(R-L-T+B),0.,0.,1.);}`,
+vort:H+`uniform sampler2D uV,uC;uniform float curl,dt;
+void main(){float L=texture(uC,vL).x,R=texture(uC,vR).x,T=texture(uC,vT).x,B=texture(uC,vB).x,C=texture(uC,vUv).x;
+ vec2 f=.5*vec2(abs(T)-abs(B),abs(R)-abs(L));f/=length(f)+1e-4;f*=curl*C;f.y*=-1.;
+ vec2 v=texture(uV,vUv).xy+f*dt;o=vec4(clamp(v,-1000.,1000.),0.,1.);}`,
+div:H+`uniform sampler2D uV;void main(){float L=texture(uV,vL).x,R=texture(uV,vR).x,T=texture(uV,vT).y,B=texture(uV,vB).y;
+ vec2 C=texture(uV,vUv).xy;if(vL.x<0.)L=-C.x;if(vR.x>1.)R=-C.x;if(vT.y>1.)T=-C.y;if(vB.y<0.)B=-C.y;o=vec4(.5*(R-L+T-B),0.,0.,1.);}`,
+clearP:H+`uniform sampler2D uT;uniform float v;void main(){o=v*texture(uT,vUv);}`,
+pres:H+`uniform sampler2D uP,uDiv;void main(){float L=texture(uP,vL).x,R=texture(uP,vR).x,T=texture(uP,vT).x,B=texture(uP,vB).x;
+ o=vec4((L+R+B+T-texture(uDiv,vUv).x)*.25,0.,0.,1.);}`,
+grad:H+`uniform sampler2D uP,uV;void main(){float L=texture(uP,vL).x,R=texture(uP,vR).x,T=texture(uP,vT).x,B=texture(uP,vB).x;
+ vec2 v=texture(uV,vUv).xy-vec2(R-L,T-B);o=vec4(v,0.,1.);}`,
+display:H+`uniform sampler2D uD;uniform vec3 paper,ink;uniform float bleed,time,night;uniform vec2 res;${NOISE}
+void main(){float d=texture(uD,vUv).r;
+ float l=texture(uD,vL).r,r=texture(uD,vR).r,t=texture(uD,vT).r,b=texture(uD,vB).r;
+ float g=length(vec2(r-l,t-b));
+ float a=1.-exp(-d*1.6);
+ a=clamp(a+g*bleed*2.2*(1.-a*.6),0.,1.);
+ a=pow(a,.9);
+ vec2 px=gl_FragCoord.xy;
+ float fiber=fbm(px*vec2(.012,.05))*.6+fbm(px*.09)*.4;
+ a*=.86+.28*fiber;
+ vec3 c=mix(paper,ink,clamp(a,0.,1.));
+ float grain=hash(px+fract(time*.0)*7.)-.5;
+ c+=grain*(night>.5?.028:.035);
+ vec2 q=vUv-.5;c=mix(c,c*(night>.5?.7:.93),dot(q,q)*1.2);
+ o=vec4(c,1.);}`
+};
+
+function sh(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;}
+const vs=sh(gl.VERTEX_SHADER,VS);
+function prog(fs){const p=gl.createProgram();gl.attachShader(p,vs);gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));
+  gl.bindAttribLocation(p,0,'aPos');gl.linkProgram(p);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));
+  const u={};const n=gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS);for(let i=0;i<n;i++){const nm=gl.getActiveUniform(p,i).name;u[nm]=gl.getUniformLocation(p,nm);}
+  return {p,u};}
+let P;try{P={};for(const k in FS)P[k]=prog(FS[k]);}catch(e){fail('シェーダの初期化に失敗しました。<br>'+e.message);return;}
+
+gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,-1,1,1,1,1,-1]),gl.STATIC_DRAW);
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,gl.createBuffer());
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array([0,1,2,0,2,3]),gl.STATIC_DRAW);
+gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);gl.enableVertexAttribArray(0);
+
+function fbo(w,h,ifmt,fmt,filter){
+  gl.activeTexture(gl.TEXTURE0);const t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,ifmt,w,h,0,fmt,gl.HALF_FLOAT,null);
+  const f=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,f);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+  gl.viewport(0,0,w,h);gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);
+  return {t,f,w,h,tx:[1/w,1/h],attach(i){gl.activeTexture(gl.TEXTURE0+i);gl.bindTexture(gl.TEXTURE_2D,t);return i;}};}
+function dbl(w,h,ifmt,fmt,filter){let a=fbo(w,h,ifmt,fmt,filter),b=fbo(w,h,ifmt,fmt,filter);
+  return {w,h,tx:a.tx,get read(){return a},get write(){return b},swap(){[a,b]=[b,a];}};}
+
+let vel,dye,dv,cu,pr,simW,simH,dyeW,dyeH;
+function res(base){const ar=canvas.width/canvas.height;return ar>=1?[Math.round(base*ar),base]:[base,Math.round(base/ar)];}
+function init(){
+  [simW,simH]=res(160);[dyeW,dyeH]=res(Math.min(900,Math.max(canvas.height,canvas.width)>1400?900:640));
+  const L=gl.LINEAR,N=gl.NEAREST;
+  vel=dbl(simW,simH,gl.RG16F,gl.RG,L);dye=dbl(dyeW,dyeH,gl.R16F,gl.RED,L);
+  dv=fbo(simW,simH,gl.R16F,gl.RED,N);cu=fbo(simW,simH,gl.R16F,gl.RED,N);pr=dbl(simW,simH,gl.R16F,gl.RED,N);
+}
+function resize(){const dpr=Math.min(window.devicePixelRatio||1,2);const w=Math.floor(innerWidth*dpr),h=Math.floor(innerHeight*dpr);
+  if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;init();}}
+function blit(t){if(t){gl.viewport(0,0,t.w,t.h);gl.bindFramebuffer(gl.FRAMEBUFFER,t.f);}else{gl.viewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);gl.bindFramebuffer(gl.FRAMEBUFFER,null);}
+  gl.drawElements(gl.TRIANGLES,6,gl.UNSIGNED_SHORT,0);}
+function use(p,texel){gl.useProgram(p.p);if(p.u.texel)gl.uniform2fv(p.u.texel,texel);return p.u;}
+
+/* ---------- state ---------- */
+const S={speed:.35,dir:-1,amt:1,buoy:.45,curl:8,fade:.22,bleed:1,auto:true,paused:false,night:false};
+const live={turb:.25,curl:8,spread:.2,emit:2}; let target={...live};
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function splat(x,y,dx,dy,ink,rad){
+  const ar=canvas.width/canvas.height,seed=Math.random()*100;
+  let u=use(P.splat,vel.tx);gl.uniform1i(u.uT,vel.read.attach(0));gl.uniform1f(u.aspect,ar);gl.uniform2f(u.point,x,y);
+  gl.uniform3f(u.color,dx,dy,0);gl.uniform1f(u.radius,rad/100);gl.uniform1f(u.seed,seed);blit(vel.write);vel.swap();
+  u=use(P.splat,dye.tx);gl.uniform1i(u.uT,dye.read.attach(0));gl.uniform3f(u.color,ink,0,0);gl.uniform1f(u.radius,rad/100);gl.uniform1f(u.seed,seed);blit(dye.write);dye.swap();
+}
+
+/* incense-like emitters wandering along the source edge */
+const em=Array.from({length:5},(_,i)=>({x:Math.random(),ph:Math.random()*99,on:i<3}));
+let puffT=0;
+function emit(dt,t){
+  const base=S.dir>0?.02:.98, n=Math.round(live.emit);
+  em.forEach((e,i)=>{if(i>=n)return;
+    e.x+= (Math.sin(t*.23+e.ph)*.5+Math.sin(t*.61+e.ph*2.)*.3)*dt*.05; e.x=(e.x+1)%1;
+    const pulse=.55+.45*Math.sin(t*1.7+e.ph);
+    splat(.08+e.x*.84,base,(Math.random()-.5)*14*live.spread,S.dir*(25+20*pulse),.07*S.amt*pulse*Math.min(1,S.speed*2.4),.016+.012*pulse);
+  });
+  puffT-=dt;if(puffT<0){puffT=3+Math.random()*4;
+    const x=.15+Math.random()*.7;splat(x,S.dir>0?.06:.94,(Math.random()-.5)*30,S.dir*(60+Math.random()*80),1.2*S.amt,.3+Math.random()*.35);}
+}
+
+/* ---------- pointer ---------- */
+const ptr={down:false,x:0,y:0,px:0,py:0,moved:0};
+function pos(e){const r=canvas.getBoundingClientRect();return [(e.clientX-r.left)/r.width,1-(e.clientY-r.top)/r.height];}
+canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);ptr.down=true;ptr.moved=0;[ptr.x,ptr.y]=pos(e);ptr.px=ptr.x;ptr.py=ptr.y;});
+canvas.addEventListener('pointermove',e=>{if(!ptr.down)return;const[x,y]=pos(e);ptr.moved+=Math.hypot(x-ptr.x,y-ptr.y);ptr.x=x;ptr.y=y;});
+const up=()=>{if(ptr.down&&ptr.moved<.01)splat(ptr.x,ptr.y,0,S.dir*90,2.6*S.amt,.6);ptr.down=false;};
+canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);
+
+/* ---------- loop ---------- */
+let last=performance.now(),t0=last,cycleAt=last+20000;
+function newShape(){target={turb:.08+Math.random()*.4,curl:3+Math.random()*12,spread:Math.random()*.4,emit:1+Math.random()*2.5};
+  if(!S.auto)return;cycleAt=performance.now()+20000;}
+function step(dt,t){
+  for(const k in live)live[k]+=(target[k]-live[k])*Math.min(1,dt*.35);
+  const curlV=S.auto?live.curl:S.curl;
+  if(ptr.down){const dx=(ptr.x-ptr.px)*2500,dy=(ptr.y-ptr.py)*2500;if(Math.hypot(dx,dy)>1)splat(ptr.x,ptr.y,dx,dy+S.dir*80,.9*S.amt,.08);ptr.px=ptr.x;ptr.py=ptr.y;}
+  emit(dt,t);
+  let u=use(P.force,vel.tx);gl.uniform1i(u.uV,vel.read.attach(0));gl.uniform1i(u.uD,dye.read.attach(1));
+  gl.uniform1f(u.dt,dt);gl.uniform1f(u.buoy,S.buoy);gl.uniform1f(u.dir,S.dir);gl.uniform1f(u.time,t);gl.uniform1f(u.turb,S.auto?live.turb:.25);gl.uniform1f(u.aspect,canvas.width/canvas.height);
+  blit(vel.write);vel.swap();
+  u=use(P.curl,vel.tx);gl.uniform1i(u.uV,vel.read.attach(0));blit(cu);
+  u=use(P.vort,vel.tx);gl.uniform1i(u.uV,vel.read.attach(0));gl.uniform1i(u.uC,cu.attach(1));gl.uniform1f(u.curl,curlV);gl.uniform1f(u.dt,dt);blit(vel.write);vel.swap();
+  u=use(P.div,vel.tx);gl.uniform1i(u.uV,vel.read.attach(0));blit(dv);
+  u=use(P.clearP,vel.tx);gl.uniform1i(u.uT,pr.read.attach(0));gl.uniform1f(u.v,.8);blit(pr.write);pr.swap();
+  u=use(P.pres,vel.tx);gl.uniform1i(u.uDiv,dv.attach(0));
+  for(let i=0;i<22;i++){gl.uniform1i(u.uP,pr.read.attach(1));blit(pr.write);pr.swap();}
+  u=use(P.grad,vel.tx);gl.uniform1i(u.uP,pr.read.attach(0));gl.uniform1i(u.uV,vel.read.attach(1));blit(vel.write);vel.swap();
+  u=use(P.advect,vel.tx);gl.uniform2fv(u.texel,vel.tx);gl.uniform1i(u.uV,vel.read.attach(0));gl.uniform1i(u.uS,vel.read.attach(0));
+  gl.uniform1f(u.dt,dt);gl.uniform1f(u.diss,.7);gl.uniform1f(u.dir,S.dir);gl.uniform1f(u.edge,0);blit(vel.write);vel.swap();
+  gl.useProgram(P.advect.p);gl.uniform2fv(u.texel,vel.tx);gl.uniform1i(u.uV,vel.read.attach(0));gl.uniform1i(u.uS,dye.read.attach(1));
+  gl.uniform1f(u.diss,S.fade);gl.uniform1f(u.edge,1);blit(dye.write);dye.swap();
+}
+function render(t){
+  const u=use(P.display,dye.tx);gl.uniform1i(u.uD,dye.read.attach(0));
+  const night=S.night;gl.uniform3fv(u.paper,night?[.043,.043,.043]:[.953,.949,.933]);gl.uniform3fv(u.ink,night?[.94,.94,.92]:[.04,.04,.045]);
+  gl.uniform1f(u.bleed,S.bleed);gl.uniform1f(u.time,t);gl.uniform1f(u.night,night?1:0);blit(null);
+}
+const cyc=document.getElementById('cycle');
+function frame(now){
+  resize();
+  let dt=Math.min((now-last)/1000,1/30);last=now;dt*=S.speed;if(reduce)dt*=.6;
+  const t=(now-t0)/1000;
+  if(!S.paused){step(dt,t);
+    if(S.auto){const left=Math.max(0,(cycleAt-now)/1000);cyc.textContent=Math.ceil(left)+'s';if(left<=0)newShape();}
+  }
+  render(t);if(wantShot){wantShot=false;grab();}requestAnimationFrame(frame);
+}
+resize();init();
+for(let i=0;i<3;i++)splat(.2+Math.random()*.6,.75+Math.random()*.2,0,-80,1.6,.4);
+requestAnimationFrame(frame);
+
+/* ---------- capture ---------- */
+let wantShot=false,shots=0;let dlP=null;const getDl=()=>dlP||(dlP=(window.claude&&window.claude.use)?Promise.resolve(window.claude.use('downloads')).catch(()=>null):Promise.resolve(null));
+function stamp(){const d=new Date(),z=n=>String(n).padStart(2,'0');return d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+'-'+z(d.getHours())+z(d.getMinutes())+z(d.getSeconds());}
+function toast(m){const el=document.getElementById('toast');el.textContent=m;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2600);}
+function grab(){
+  canvas.toBlob(async blob=>{if(!blob)return toast('撮影できませんでした');
+    const fl=document.getElementById('flash');fl.classList.add('on');requestAnimationFrame(()=>requestAnimationFrame(()=>fl.classList.remove('on')));
+    const name='sumi-'+stamp()+'.png',url=URL.createObjectURL(blob),dl=await getDl();
+    const fig=document.createElement('figure');fig.style.setProperty('--ar',(canvas.width/canvas.height).toFixed(3));
+    const img=new Image();img.src=url;img.alt='撮影した墨の瞬間 '+(++shots);fig.appendChild(img);
+    const b=document.createElement('button');b.textContent='保存';fig.appendChild(b);
+    b.onclick=async()=>{if(!dl){const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();return;}
+      try{await dl.save({filename:name,data:blob});toast('保存しました：'+name);}catch(e){if(e&&e.code==='declined')return;toast(e&&e.code==='rate_limited'?'少し待ってからもう一度押してください':'この画面では保存できません。画像を右クリック／長押しで保存してください');}};
+    const shelf=document.getElementById('shelf');shelf.prepend(fig);while(shelf.children.length>6){URL.revokeObjectURL(shelf.lastChild.querySelector('img').src);shelf.lastChild.remove();}
+    if(dl){try{await dl.save({filename:name,data:blob});toast('保存しました：'+name);}catch(e){if(!e||e.code!=='declined')toast('下のサムネイルから保存できます');}}
+    else{const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();toast('保存しました：'+name);}
+  },'image/png');
+}
+document.getElementById('shoot').onclick=()=>{wantShot=true;};
+addEventListener('keydown',e=>{if(e.key==='c'||e.key==='C'){if(e.target.tagName!=='INPUT')wantShot=true;}});
+
+/* ---------- UI ---------- */
+const $=id=>document.getElementById(id);
+function setDir(d){S.dir=d;$('dirUp').setAttribute('aria-pressed',d>0);$('dirDown').setAttribute('aria-pressed',d<0);}
+$('dirUp').onclick=()=>setDir(1);$('dirDown').onclick=()=>setDir(-1);
+[['speed',2],['amt',2],['buoy',2],['curl',0],['fade',2],['bleed',2]].forEach(([k,f])=>{const el=$(k),out=$(k+'O');
+  el.addEventListener('input',()=>{S[k]=+el.value;out.textContent=(+el.value).toFixed(f);
+    if(k==='curl'&&S.auto){S.auto=false;$('auto').setAttribute('aria-pressed','false');$('auto').textContent='自動変化 OFF';cyc.textContent='手動';}});});
+$('auto').onclick=e=>{S.auto=!S.auto;e.target.setAttribute('aria-pressed',S.auto);e.target.textContent='自動変化 '+(S.auto?'ON':'OFF');
+  if(S.auto)cycleAt=performance.now()+20000;else cyc.textContent='手動';};
+$('invert').onclick=()=>{S.night=!S.night;document.documentElement.classList.toggle('night',S.night);};
+$('clear').onclick=()=>{init();};
+$('pause').onclick=e=>{S.paused=!S.paused;e.target.textContent=S.paused?'再生':'停止';};
+addEventListener('keydown',e=>{if(e.code==='Space'&&e.target===document.body){e.preventDefault();newShape();}});
+if(innerWidth<520)$('panel').open=false;
+})();
+</script>
+
+</body>
+</html>
