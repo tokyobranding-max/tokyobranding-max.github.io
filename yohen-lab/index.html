@@ -71,6 +71,9 @@ button:focus-visible,[tabindex]:focus-visible,input:focus-visible,label:focus-wi
 .top .gap{flex:1 1 0;min-width:0}
 @media (max-width:640px){.top .btn{flex:1 1 auto}.top .gap{display:none}.favwrap{flex:1 1 auto}.favwrap .btn{width:100%}}
 .favwrap{position:relative}
+.tintchip{display:flex;align-items:center;gap:8px;margin-top:10px;padding:6px 8px;border-radius:10px;border:1px solid rgba(122,217,202,.45);font-size:11.5px;color:var(--acc-text)}
+.tintchip .tsw{display:flex;gap:2px}.tintchip .tsw i{width:12px;height:12px;border-radius:3px;display:block}
+.tintchip button{margin-left:auto;font-size:11px;padding:2px 8px;border-radius:7px;border:1px solid var(--edge);background:transparent;color:var(--ink)}
 .sharepop{left:0;right:auto;width:min(400px,calc(100vw - 32px))}
 .sharecard{display:grid;grid-template-columns:42px minmax(0,1fr);gap:12px;align-items:center;padding:10px;border-radius:12px;background:var(--glass2);margin:10px 0 12px}
 .snsrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
@@ -291,6 +294,7 @@ html.fit body{padding-block:12px 12px}
             <div><div class="ic" id="sWarnIc"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M7 1.5 13 12.5H1z"/><path d="M7 5.5v3.5M7 10.5v.5"/></svg></div><div class="m">注意</div><div id="sWarn">—</div></div>
           </div>
           <div class="tags" id="rtags" style="margin-top:12px"></div>
+          <div class="tintchip" id="tintChip" hidden><span class="tsw" id="tintSw"></span><span>写真の色で表示中</span><button type="button" id="tintOff">調合どおりに戻す</button></div>
         </section>
         <section class="g card" aria-label="仕上がり">
           <div class="t" style="font-size:13.5px">仕上がり</div>
@@ -367,6 +371,7 @@ const BASES={
   matte:{key:'matte',label:'マット釉',ox:[226,224,216],red:[220,222,218],tr:.15,gloss:.16,mat:1230,run:.4,desc:'微細な結晶でツヤを抑え、色はくすむ'},
   jun:{key:'jun',label:'鈞窯釉',ox:[200,208,198],red:[172,192,214],tr:.35,gloss:.62,mat:1280,run:1.0,desc:'釉の中で細かな分相が起き、光が散って乳青色に見える',opal:1},
   crys:{key:'crys',label:'結晶釉',ox:[234,232,222],red:[226,230,230],tr:.8,gloss:.9,mat:1270,run:1.9,desc:'亜鉛が多くアルミナが少ない。よく流れ、徐冷で亜鉛の結晶が育つ',crys:1},
+  alk:{key:'alk',label:'アルカリ釉',ox:[236,238,234],red:[230,236,236],tr:.82,gloss:.88,mat:1220,run:1.2,desc:'ナトリウムやカリウムが多く、銅をトルコ青に、マンガンを紫に発色させる',alk:1},
 };
 const CLAYS={
   porcelain:{label:'磁器土',ox:[244,242,236],red:[230,235,237],iron:.2,ironL:'ほぼ無し'},
@@ -396,6 +401,8 @@ const CR_ZN=[[.3,[200,176,136]],[1,[134,98,58]],[3,[84,58,36]]];
 const CRSN_OX=[[.04,[238,214,212]],[.2,[222,128,150]],[.5,[176,74,98]],[1,[118,56,58]]];
 const CRSN_RED=[[.05,[214,216,204]],[.3,[160,166,138]],[1,[96,108,80]]];
 const MN=[[.5,[214,198,208]],[2,[152,106,124]],[4,[112,70,80]],[7,[72,46,42]],[10,[58,44,34]]];
+const CU_ALK=[[.4,[178,224,218]],[1.5,[104,196,196]],[3,[56,166,178]],[5,[32,118,138]],[6,[26,90,110]]];
+const MN_ALK=[[.5,[214,196,222]],[2,[160,104,170]],[4,[118,64,128]],[7,[78,44,80]],[10,[56,38,52]]];
 const MN_AL=[[.5,[210,196,180]],[2,[158,122,92]],[4,[118,82,56]],[7,[76,52,36]],[10,[56,42,30]]];
 const MN_RED=[[.5,[206,196,178]],[2,[168,140,104]],[5,[120,92,62]],[10,[66,52,38]]];
 const NI_CA=[[.3,[214,200,170]],[1,[178,150,110]],[2.5,[132,104,70]],[4,[96,80,56]]];
@@ -412,11 +419,11 @@ function ramp(p,base,stops){
 function cc(kind,p,atm,base,B){
   switch(kind){
     case 'fe':return mix(ramp(p,base,FE_OX),ramp(p,base,FE_RED),sm(.3,.75,atm));
-    case 'cu':return mix(ramp(p,base,CU_OX),ramp(p,base,CU_RED),sm(.38,.72,atm));
+    case 'cu':return mix(ramp(p,base,B.alk?CU_ALK:CU_OX),ramp(p,base,CU_RED),sm(.38,.72,atm));
     case 'co':{const c=ramp(p,base,CO);return mix(c,[Math.min(255,c[0]*1.15+10),c[1]*.9,c[2]],sm(.4,1,atm)*.5)}
     case 'cr':{let c=ramp(p,base,CR_OX);c=mix(c,mix(c,[104,104,66],.5),sm(.3,.8,atm));if(B.key==='matte')c=mix(c,ramp(p,base,CR_ZN),.85);return c}
     case 'crsn':return mix(ramp(p,base,CRSN_OX),ramp(p,base,CRSN_RED),sm(.25,.6,atm));
-    case 'mn':{let ox=ramp(p,base,MN);if(B.key==='feld'||B.key==='matte'||B.key==='jun')ox=mix(ox,ramp(p,base,MN_AL),.7);return mix(ox,ramp(p,base,MN_RED),sm(.4,.9,atm)*.6)}
+    case 'mn':{let ox=ramp(p,base,MN);if(B.key==='feld'||B.key==='matte'||B.key==='jun')ox=mix(ox,ramp(p,base,MN_AL),.7);else if(B.alk)ox=mix(ox,ramp(p,base,MN_ALK),.7);return mix(ox,ramp(p,base,MN_RED),sm(.4,.9,atm)*.6)}
     case 'ni':{const zn=B.key==='matte'||B.key==='crys';const ox=ramp(p,base,zn?NI_ZN:B.key==='feld'?NI_MG:NI_CA);return mix(ox,ramp(p,base,NI_RED),sm(.4,.85,atm)*(zn?.4:.8))}
     case 'ru':{const c=ramp(p,base,RU);return mix(c,mix(c,[196,172,120],.3),sm(.3,.8,atm)*.5)}
     default:return base;
@@ -447,7 +454,7 @@ function compute(s,atm=s.atm){
   }
   if(s.col==='cu'&&p>.15){
     const v=clamp(1-Math.abs(atm-.55)/.2);
-    if(v>0){r.varieg=v;r.varA=finish(ramp(p,base,CU_OX));r.varB=finish(ramp(p,base,CU_RED));r.varW=sm(.38,.72,atm)}
+    if(v>0){r.varieg=v;r.varA=finish(ramp(p,base,B.alk?CU_ALK:CU_OX));r.varB=finish(ramp(p,base,CU_RED));r.varW=sm(.38,.72,atm)}
     if(atm>.5)col=mix(col,[112,52,40],.22*cool*sm(.38,.72,atm));
   }
   if(s.col==='mn'&&p>=5){
@@ -470,6 +477,7 @@ function compute(s,atm=s.atm){
     if(a>0){r.flower=a;r.flowerR=lerp(.7,1.8,a);r.flowerCol=CRY_TINT[s.col]||CRY_TINT.none}
   }
   r.col=finish(col);
+  if(s.tint&&atm===s.atm)applyTint(r,s.tint);
   r.tr=B.tr*Math.pow(melt,1.5)*(1-.3*cool)*(1+.08*(1-cool));
   r.gloss=B.gloss*melt*melt*(1-.28*cool*(B.key==='clear'?.6:1))*(1-.35*r.crystal)*(1+.15*over);
   r.run=clamp(B.run*(.15+over*1.3+clamp((T-B.mat)/160))*(.6+.7*s.thick),0,2);
@@ -477,7 +485,16 @@ function compute(s,atm=s.atm){
 }
 const atmWord=a=>a<.3?'酸化':a<.6?'中性':'還元';
 const coolRate=c=>Math.round(lerp(300,40,c));
+function applyTint(r,T){
+  const lift=c=>c.map(v=>clamp(v*1.05+3,0,255));
+  if(T.body){const tb=lift(T.body),d=[tb[0]-r.col[0],tb[1]-r.col[1],tb[2]-r.col[2]],sh=c=>c&&[c[0]+d[0]*.85,c[1]+d[1]*.85,c[2]+d[2]*.85];
+    r.varA=sh(r.varA);r.varB=sh(r.varB);if(!T.rim)r.thinCol=sh(r.thinCol);r.col=tb}
+  if(T.rim)r.thinCol=lift(T.rim);
+  if(T.clay)r.clay=T.clay;
+  r.tinted=true;
+}
 function nameOf(s,r,atm=s.atm){
+  if(s.tint&&s.tint.name&&atm===s.atm)return [s.tint.name,s.tint.yomi||''];
   const CN={fe:'鉄',cu:'銅',co:'コバルト',mn:'マンガン',ni:'ニッケル',cr:'クロム',crsn:'桃色',ru:'ルチル'};
   if(s.base==='jun'&&s.col==='cu'&&atm>.45&&r.splash)return ['鈞窯 紫斑','きんよう しはん'];
   if(s.base==='crys'&&s.col!=='none'&&r.flower>.25)return [CN[s.col]+'結晶釉',''];
@@ -493,7 +510,8 @@ function nameOf0(s,r,atm){
       if(a<.35)return p<1?['淡黄釉','たんおうゆう']:p<3.5?['黄瀬戸','きせと']:p<6.5?['飴釉','あめゆう']:r.crystal>.25?['柿天目','かきてんもく']:['黒釉','こくゆう'];
       if(a>.65)return p<.9?['影青','いんちん']:p<2.6?['青磁','せいじ']:p<5?['蕎麦釉','そばゆう']:tm();
       return p<3?['米色青磁','べいしょくせいじ']:p<6?['鉄釉','てつゆう']:tm();}
-    case 'cu':if(a<.38)return p<.8?['青織部','あおおりべ']:['織部','おりべ'];
+    case 'cu':if(a<.38&&s.base==='alk')return p<1?['淡トルコ青','たんとるこあお']:['トルコ青','とるこあお'];
+      if(a<.38)return p<.8?['青織部','あおおりべ']:['織部','おりべ'];
       if(a>.72)return p<.4?['桃花紅','とうかこう']:p<2.5?['辰砂','しんしゃ']:['牛血紅','ぎゅうけつこう'];
       return ['窯変辰砂','ようへんしんしゃ'];
     case 'co':return p<.4?['薄瑠璃','うするり']:['瑠璃釉','るりゆう'];
@@ -551,7 +569,9 @@ function notesOf(s,r){
     crsn:{酸化:'ピンクは酸化でしか出ない。',中性:'還元気味になるとピンクが弱まる。',還元:'還元ではピンクが消え、灰緑になる。'},
     none:{酸化:'発色剤がないので変化は小さめ。灰釉なら黄みが出る。',中性:'発色剤がないので変化は小さめ。',還元:'釉や土の微量の鉄が還元され、うっすら青みを帯びる。'}
   };
-  const at=`${w}焼成。`+t[k][w];
+  let at=`${w}焼成。`+t[k][w];
+  if(B.alk&&k==='cu'&&w!=='還元')at=`${w}焼成。アルカリ釉の中で銅イオンがトルコ青に発色する（ペルシャ青）。`;
+  if(B.alk&&k==='mn')at+=' アルカリ釉ではマンガンが紫に寄る。';
   let tp;
   if(r.melt<.55)tp=`${s.temp}℃は熟成温度（約${B.mat}℃）に届かず、釉が溶けきらない。白っぽくザラつき、発色も弱い。`;
   else if(r.melt<.95)tp=`${s.temp}℃は熟成温度（約${B.mat}℃）の少し手前。ツヤと発色がまだ不十分。`;
@@ -587,7 +607,7 @@ function glazeColorN(r,t,a1,a2,a3,aS,a4,clay,fl){
   const dk=clamp((t-1)/.8)*.3;g=[g[0]*(1-dk),g[1]*(1-dk),g[2]*(1-dk)];
   if(r.crystal>0){const thr=1-r.crystal*.33;if(a3>thr)g=mix(g,r.crystalCol,clamp((a3-thr)*14))}
   if(r.streak>0)g=mix(g,r.streakCol,r.streak*clamp((aS-.5)*3.2)*clamp(t));
-  const vis=clamp(r.tr*(1.05-.4*t)+(1-t*4)*.9);
+  const vis=clamp(r.tr*(1.05-.4*t)*(r.tinted?.25:1)+(1-t*4)*.9);
   if(fl>0)g=mix(g,r.flowerCol,clamp(fl));
   g=mix(g,mul(g,clay||r.clay),vis*.92*(1-clamp(fl||0)*.6));
   const gr=(a4-.5)*70*(1-r.melt)+(a2-.5)*10;
@@ -618,7 +638,7 @@ const VESSELS={
   yunomi:{label:'湯呑',elev:.2,foot:{r:2.8,h:.7},body:[[.8,3.2],[1.6,3.45],[4,3.55],[7,3.62],[9,3.72]],wall:.4,floorH:1.3,gl:2.2,drip:1.6,pool:.6},
   hanaire:{label:'花入',elev:.18,foot:{r:3.2,h:.6},body:[[.7,3.8],[2,4.7],[4,5.25],[6,5.3],[8,4.8],[10,3.2],[11.5,1.8],[12.5,1.5],[13.6,1.7],[14,1.95]],wall:.4,floorH:1.2,gl:3.2,drip:2.2,pool:.5},
 };
-const state={vessel:'chawan',col:'cu',amt:.8,base:'clear',atm:.85,temp:1250,cool:.15,clay:'porcelain',thick:.7};
+const state={vessel:'chawan',col:'cu',amt:.8,base:'clear',atm:.85,temp:1250,cool:.15,clay:'porcelain',thick:.7,tint:null};
 const KEYS=Object.keys(state);
 const pick=o=>{const x={};KEYS.forEach(k=>{if(o&&o[k]!==undefined)x[k]=o[k]});return x};
 
@@ -849,11 +869,11 @@ for(let py=0;py<THt*TS;py++)for(let px=0;px<TWt*TS;px++){const x=px/TS+40,y=py/T
 for(let px=0;px<TWt*TS;px++){const x=px/TS;tf.wave[px]=(vnp(x/22,3.3,9,0)-.5)*10;tf.drip[px]=clamp((vnp(x/6,1.7,8,0)-.52)/.48)}
 const TA=[0,.25,.5,.75,1],TL=['酸化','弱酸化','中性','弱還元','還元'];
 const tiles=TA.map((a,k)=>{const b=document.createElement('button');b.type='button';b.className='tile';const c=document.createElement('canvas');c.width=TWt*TS;c.height=THt*TS;
-  const sp=document.createElement('span');sp.textContent=TL[k];b.append(c,sp);b.setAttribute('aria-label',TL[k]+'に切り替え');b.onclick=()=>{state.atm=a;sync()};$('tiles').append(b);
+  const sp=document.createElement('span');sp.textContent=TL[k];b.append(c,sp);b.setAttribute('aria-label',TL[k]+'に切り替え');b.onclick=()=>{dropTint('atm');state.atm=a;sync()};$('tiles').append(b);
   const ctx=c.getContext('2d');return {b,sp,ctx,img:ctx.createImageData(c.width,c.height)}});
 function renderTiles(s){
   const near=Math.round(s.atm*4);
-  tiles.forEach((tl,k)=>{const r=compute(s,TA[k]),d=tl.img.data,pw=TWt*TS,ph=THt*TS,tm=.55+.9*s.thick;
+  tiles.forEach((tl,k)=>{const r=(k===near&&s.tint)?compute(s):compute(s,TA[k]),d=tl.img.data,pw=TWt*TS,ph=THt*TS,tm=.55+.9*s.thick;
     tl.b.classList.toggle('on',k===near);tl.sp.textContent=TL[k]+(k===near?'（現在）':'');
     for(let py=0;py<ph;py++){const y=py/TS;for(let px=0;px<pw;px++){const x=px/TS,i=py*pw+px,o=i*4;
       const edge=THt*.8+tf.wave[px],dl=r.run*10*tf.drip[px];let c,shade=1-.1*(y/THt),spec=0;
@@ -914,8 +934,10 @@ const NODES=[
   {cap:'焼成',ic:'fire',rows:['atm','temp','cool'],ro:[['焼成時間（推定）',()=>`約${schedule(state).end.toFixed(1)} 時間`]]},
 ];
 const nodeEls={},roEls=[];
+const TINT_KEYS=['col','amt','base','atm','temp','cool','clay'];
+function dropTint(key){if(state.tint&&TINT_KEYS.includes(key)){state.tint=null;toast('写真の色合わせを外し、調合どおりの色に戻しました')}}
 function stepVal(key,dir){
-  const c=CTRL[key];
+  const c=CTRL[key];dropTint(key);
   if(c.type==='enum'){const o=c.opts(),i=o.indexOf(state[key]);state[key]=o[(i+dir+o.length)%o.length];c.after&&c.after(state[key])}
   else{const mx=typeof c.max==='function'?c.max():c.max,st=typeof c.step==='function'?c.step():c.step;state[key]=+clamp(Math.round((state[key]+dir*st)/st)*st,c.min,mx).toFixed(3)}
   sync();
@@ -932,7 +954,7 @@ NODES.forEach(n=>{
     if(c.type==='enum')val.addEventListener('click',()=>stepVal(k,1));
     else{let d=null;val.addEventListener('pointerdown',e=>{d={x:e.clientX,v:state[k]};val.setPointerCapture(e.pointerId)});
       val.addEventListener('pointermove',e=>{if(!d)return;const mx=typeof c.max==='function'?c.max():c.max,st=typeof c.step==='function'?c.step():c.step;
-        const nv=+clamp(Math.round((d.v+(e.clientX-d.x)/160*(mx-c.min))/st)*st,c.min,mx).toFixed(3);if(nv!==state[k]){state[k]=nv;sync()}});
+        const nv=+clamp(Math.round((d.v+(e.clientX-d.x)/160*(mx-c.min))/st)*st,c.min,mx).toFixed(3);if(nv!==state[k]){dropTint(k);state[k]=nv;sync()}});
       const up=()=>{d=null};val.addEventListener('pointerup',up);val.addEventListener('pointercancel',up)}
     el.append(row);nodeEls[k]={row,val,prev,next};});
   n.ro.forEach(([lab,fn])=>{const row=document.createElement('div');row.className='nr ro';row.innerHTML=`<span class="k">${lab}</span><span class="v"></span>`;el.append(row);roEls.push([row.querySelector('.v'),fn])});
@@ -957,6 +979,7 @@ const PRESET_GROUPS=[
   ['桃花紅',{col:'cu',amt:.3,base:'clear',atm:.9,temp:1250,cool:.15,clay:'porcelain',thick:.7}],
   ['牛血紅',{col:'cu',amt:3,base:'clear',atm:.9,temp:1250,cool:.2,clay:'porcelain',thick:.8}],
   ['窯変辰砂',{col:'cu',amt:1,base:'clear',atm:.55,temp:1250,cool:.2,clay:'porcelain',thick:.75}],
+  ['トルコ青',{col:'cu',amt:2.5,base:'alk',atm:.05,temp:1220,cool:.3,clay:'porcelain',thick:.65}],
   ['織部',{col:'cu',amt:3.5,base:'clear',atm:.05,temp:1240,cool:.3,clay:'stoneware',thick:.6}],
   ['青織部',{col:'cu',amt:.6,base:'ash',atm:.1,temp:1240,cool:.3,clay:'stoneware',thick:.5}]]],
  ['コバルト・クロム',[
@@ -985,7 +1008,7 @@ const prePop=$('prePop'),preBtn=$('preBtn');let nPre=0;
 PRESET_GROUPS.forEach(([g,list])=>{const sec=document.createElement('section');sec.className='pg';const h=document.createElement('h4');h.textContent=g;const row=document.createElement('div');
   list.forEach(([n,p])=>{nPre++;const b=document.createElement('button');b.type='button';const i=document.createElement('i');
     const r=compute({...state,...p});i.style.background=`radial-gradient(circle at 40% 35%, ${rgb(r.col)} 0 50%, ${rgb(r.thinCol)} 75%)`;
-    b.append(i,document.createTextNode(n));b.onclick=()=>{Object.assign(state,p);sync();closePre();toast(`「${n}」の調合にしました`)};row.append(b)});
+    b.append(i,document.createTextNode(n));b.onclick=()=>{Object.assign(state,p);state.tint=null;sync();closePre();toast(`「${n}」の調合にしました`)};row.append(b)});
   sec.append(h,row);prePop.append(sec)});
 $('preCount').textContent=`（${nPre}種）`;
 function closePre(){prePop.hidden=true;preBtn.setAttribute('aria-expanded','false')}
@@ -1003,14 +1026,16 @@ function randomize(){
   state.atm=+(Math.round(R(0,1)/.05)*.05).toFixed(2);
   const mat=BASES[state.base].mat;state.temp=Math.round(clamp(R(mat-35,mat+45),1100,1320)/5)*5;
   state.cool=+(Math.round(R(0,1)/.05)*.05).toFixed(2);state.thick=+(Math.round(R(.35,.95)/.05)*.05).toFixed(2);
-  sync();const r=compute(state);toast(`ランダムで作成：${nameOf(state,r)[0]}の${VESSELS[state.vessel].label}`);
+  state.tint=null;sync();const r=compute(state);toast(`ランダムで作成：${nameOf(state,r)[0]}の${VESSELS[state.vessel].label}`);
 }
 $('rndBtn').onclick=randomize;
+$('tintOff').onclick=()=>{state.tint=null;sync();toast('調合どおりの色に戻しました')};
 
 /* ================= sync ================= */
 let rafTex=0,rafTiles=0,lastVessel=null;
 function sync(){
   const r=compute(state),[nm,yomi]=nameOf(state,r),C=COLS[state.col],V=VESSELS[state.vessel],tags=tagsOf(state,r);
+  $('tintChip').hidden=!state.tint;if(state.tint){$('tintSw').innerHTML='';['body','rim','clay'].forEach(k=>{if(state.tint[k]){const i=document.createElement('i');i.style.background=rgb(state.tint[k]);$('tintSw').append(i)}})}
   $('rname').textContent=nm;$('ryomi').textContent=yomi;
   $('rmeta').textContent=`${V.label} ・ ${state.col==='none'?'発色剤なし':C.label+' '+fmtAmt(state.amt).replace(' ','')} ・ ${atmWord(state.atm)} ${state.temp}℃`;
   $('sGloss').textContent=Math.round(r.gloss*100)+'%';$('sTr').textContent=Math.round(clamp(r.tr/.95)*100)+'%';
@@ -1042,7 +1067,7 @@ let toastT=0;function toast(msg){const t=$('toast');t.textContent=msg;t.hidden=f
 const LS='yohen-lab-patterns';
 let favs=[],favMode='loading',favCol=null,pendingDel=null;
 function defaultName(){return nameOf(state,compute(state))[0]+'の'+VESSELS[state.vessel].label}
-const sameState=a=>KEYS.every(k=>a[k]===state[k]);
+const sameState=a=>KEYS.every(k=>JSON.stringify(a[k]??null)===JSON.stringify(state[k]??null));
 function metaOf(s){const C=COLS[s.col]||COLS.none;return `${VESSELS[s.vessel]?.label||'茶碗'} · ${s.col==='none'?'発色剤なし':C.label+' '+s.amt+'%'} · ${BASES[s.base].label} · ${atmWord(s.atm)} ${s.temp}℃ · ${CLAYS[s.clay].label}`}
 function lsLoad(){try{const v=JSON.parse(localStorage.getItem(LS)||'[]');return Array.isArray(v)?v:[]}catch(e){return []}}
 function lsWrite(){try{localStorage.setItem(LS,JSON.stringify(favs));return true}catch(e){return false}}
@@ -1058,7 +1083,7 @@ function renderFavs(){
     const sw=document.createElement('div');sw.className='fsw';sw.style.background=`radial-gradient(circle at 42% 38%, ${rgb(r.col)} 0 46%, ${rgb(mix(r.thinCol,r.col,.4))} 60%, ${rgb(r.clay)} 66% 100%)`;
     const w=document.createElement('div');w.style.minWidth='0';const nm=document.createElement('div');nm.className='fn';nm.textContent=f.name;const mt=document.createElement('div');mt.className='fm';mt.textContent=metaOf(s);w.append(nm,mt);
     const act=document.createElement('div');act.className='fa';
-    const op=document.createElement('button');op.type='button';op.className='sbtn';op.textContent='開く';op.onclick=()=>{Object.assign(state,pick(f.s));sync();closePop();toast(`「${f.name}」を開きました`)};
+    const op=document.createElement('button');op.type='button';op.className='sbtn';op.textContent='開く';op.onclick=()=>{Object.assign(state,{tint:null},pick(f.s));sync();closePop();toast(`「${f.name}」を開きました`)};
     const del=document.createElement('button');del.type='button';del.className='sbtn'+(pendingDel===f.id?' danger':'');del.textContent=pendingDel===f.id?'本当に削除':'削除';
     del.onclick=()=>{if(pendingDel!==f.id){pendingDel=f.id;renderFavs();return}pendingDel=null;removeFav(f)};
     act.append(op,del);li.append(sw,w,act);ul.append(li)});
@@ -1135,6 +1160,9 @@ function cleanAna(a){
   for(const k of ['vessel','col','base','clay'])s[k]=ENUM[k].includes(a[k])?a[k]:state[k];
   const C=COLS[s.col];s.amt=s.col==='none'?0:+(Math.round(clamp(+a.amt||C.def,0,C.max)/C.step)*C.step).toFixed(2);
   s.atm=clamp(+a.atm);s.cool=clamp(+a.cool);s.thick=clamp(+a.thick);s.temp=Math.round(clamp(+a.temp||1240,1100,1320)/5)*5;
+  const hx=v=>{const m=/^#?([0-9a-f]{6})$/i.exec(String(v||'').trim());return m?[0,2,4].map(i=>parseInt(m[1].slice(i,i+2),16)):null};
+  const co=a.colors&&typeof a.colors==='object'?a.colors:{};const tint={body:hx(co.body),rim:hx(co.rim),clay:hx(co.clay),name:String(a.name||'').slice(0,30),yomi:String(a.yomi||'').slice(0,30)};
+  s.tint=tint.body?tint:null;
   return {s,name:String(a.name||'').slice(0,30),yomi:String(a.yomi||'').slice(0,30),isCeramic:a.isCeramic!==false,confidence:String(a.confidence||'').slice(0,4),
     reasons:a.reasons&&typeof a.reasons==='object'?a.reasons:{},highlights:Array.isArray(a.highlights)?a.highlights.slice(0,4).map(x=>String(x).slice(0,120)):[],caveat:String(a.caveat||'').slice(0,200)};
 }
@@ -1154,7 +1182,10 @@ function showAna(r){
   if(r.caveat)out.append(el('p','m','写真で判断しにくい点：'+r.caveat));
   const ap=el('button','btn pri','シミュレーターに反映');ap.type='button';ap.style.width='100%';
   ap.onclick=()=>{Object.assign(state,r.s);sync();$('favName').value=((r.name||'推定')+'（写真から）').slice(0,40);closeSheet();toast('推定した調合を反映しました。ノードで微調整できます');$('stage').scrollIntoView({behavior:reduceMotion?'auto':'smooth',block:'start'})};
-  out.append(ap,el('p','m','写真の色は照明やカメラで変わるため、推定は目安です。'));
+  const ap2=el('button','btn','色だけ反映（今の器・調合のまま）');ap2.type='button';ap2.style.width='100%';ap2.style.marginTop='8px';ap2.disabled=!r.s.tint;
+  ap2.onclick=()=>{state.tint=r.s.tint;sync();closeSheet();toast('写真の色を今の器に反映しました');$('stage').scrollIntoView({behavior:reduceMotion?'auto':'smooth',block:'start'})};
+  if(r.s.tint){const sw=el('div','pal');[['body','釉'],['rim','口縁'],['clay','素地']].forEach(([k,l])=>{if(!r.s.tint[k])return;const ch=el('span','chip');const i=document.createElement('i');i.style.background=rgb(r.s.tint[k]);ch.append(i,document.createTextNode(l+' '+hex(r.s.tint[k])));sw.append(ch)});out.append(el('div','m','反映する写真の色'),sw)}
+  out.append(ap,ap2,el('p','m','「シミュレーターに反映」は推定した調合と写真の色の両方を、「色だけ反映」は今の器と調合に写真の色だけを重ねます。調合を動かすと、調合どおりの色に戻ります。'));
 }
 function buildPrompt(){
   const pal=photoPal.map(o=>`${hex(o.c)}（${Math.round(o.p*100)}%）`).join('、')||'不明';
@@ -1167,10 +1198,11 @@ function buildPrompt(){
  "vessel": "chawan"(茶碗・碗) | "sara"(皿・鉢) | "yunomi"(湯呑・カップ・筒形) | "hanaire"(花入・壺・瓶),
  "col": "none" | "fe"(鉄) | "cu"(銅) | "co"(コバルト) | "mn"(マンガン) | "ni"(ニッケル) | "ru"(ルチル・チタン) | "cr"(クロム) | "crsn"(クロム＋スズのピンク),
  "amt": 発色剤の量 %（fe 0〜12、cu 0〜6、co 0〜3、mn 0〜10、ni 0〜4、ru 0〜8、cr 0〜3、crsn 0〜1）,
- "base": "clear"(石灰透明釉) | "ash"(灰釉) | "feld"(長石釉・乳白) | "matte"(マット釉) | "jun"(鈞窯釉・乳青) | "crys"(亜鉛結晶釉),
+ "base": "clear"(石灰透明釉) | "ash"(灰釉) | "feld"(長石釉・乳白) | "matte"(マット釉) | "jun"(鈞窯釉・乳青) | "crys"(亜鉛結晶釉) | "alk"(アルカリ釉・銅でトルコ青),
  "atm": 0（酸化）〜1（還元）, "temp": 1100〜1320, "cool": 0（急冷）〜1（徐冷）,
  "clay": "porcelain"(磁器土) | "stoneware"(白土・炻器) | "shigaraki"(信楽土・長石粒) | "red"(赤土) | "black"(黒土),
  "thick": 0（薄）〜1（厚）, "confidence": "高" | "中" | "低",
+ "colors": {"body": "#rrggbb"（器の外側・内側の大部分を覆う釉の色）, "rim": "#rrggbb"（口縁や釉が薄い所・流れの縁の色。違いがなければbodyと同じ）, "clay": "#rrggbb"（高台など釉のない素地の色。見えなければnull）}（写真に写っている実際の色。影や強いハイライトではなく、光が素直に当たっている面の平均的な色）,
  "reasons": {"成分": "...", "雰囲気": "...", "温度": "...", "冷却": "...", "素地": "..."}（各60字以内、写真のどこを見て判断したか）,
  "highlights": 景色や見どころを最大3つ（各40字以内）,
  "caveat": 写真だけでは判断しにくい点（60字以内）}`;
@@ -1214,11 +1246,11 @@ fitScreen();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fi
 const PUBLIC_URL='https://tokyobranding.org/yohen-lab/';
 const LISTS={vessel:Object.keys(VESSELS),col:Object.keys(COLS),base:Object.keys(BASES),clay:Object.keys(CLAYS)};
 function encodeState(st){return ['y',LISTS.vessel.indexOf(st.vessel),LISTS.col.indexOf(st.col),LISTS.base.indexOf(st.base),LISTS.clay.indexOf(st.clay),
-  Math.round(st.amt*100),Math.round(st.atm*100),st.temp,Math.round(st.cool*100),Math.round(st.thick*100)].join('-')}
+  Math.round(st.amt*100),Math.round(st.atm*100),st.temp,Math.round(st.cool*100),Math.round(st.thick*100)].join('-')+(st.tint&&st.tint.body?'-t-'+['body','rim','clay'].map(k=>st.tint[k]?hex(st.tint[k]).slice(1):'x').join('-'):'')}
 function decodeState(h){
-  const m=/^#?y-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)$/.exec(h||'');if(!m)return null;const n=m.slice(1).map(Number);
+  const m=/^#?y-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)(?:-t-([0-9a-fx]+)-([0-9a-fx]+)-([0-9a-fx]+))?$/i.exec(h||'');if(!m)return null;const n=m.slice(1,10).map(Number);const hx6=v=>v&&/^[0-9a-f]{6}$/i.test(v)?[0,2,4].map(i=>parseInt(v.slice(i,i+2),16)):null;
   const o={vessel:LISTS.vessel[n[0]],col:LISTS.col[n[1]],base:LISTS.base[n[2]],clay:LISTS.clay[n[3]]};if(Object.values(o).some(v=>!v))return null;
-  const C=COLS[o.col];o.amt=o.col==='none'?0:clamp(n[4]/100,0,C.max);o.atm=clamp(n[5]/100);o.temp=Math.round(clamp(n[6],1100,1320)/5)*5;o.cool=clamp(n[7]/100);o.thick=clamp(n[8]/100);return o}
+  const C=COLS[o.col];o.amt=o.col==='none'?0:clamp(n[4]/100,0,C.max);o.atm=clamp(n[5]/100);o.temp=Math.round(clamp(n[6],1100,1320)/5)*5;o.cool=clamp(n[7]/100);o.thick=clamp(n[8]/100);o.tint=m[10]&&hx6(m[10])?{body:hx6(m[10]),rim:hx6(m[11]),clay:hx6(m[12])}:null;return o}
 const inArtifact=(()=>{try{return window.top!==window}catch(e){return true}})();
 function shareUrl(){const base=/^https?:$/.test(location.protocol)&&!inArtifact?location.href.split('#')[0]:PUBLIC_URL;return base+'#'+encodeState(state)}
 function shareText(){const r=compute(state),C=COLS[state.col];
