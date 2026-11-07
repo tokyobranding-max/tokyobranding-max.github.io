@@ -111,6 +111,8 @@ button:focus-visible,[tabindex]:focus-visible,input:focus-visible,label:focus-wi
 .seg2{display:flex;gap:4px}
 .seg2 button{font-size:11.5px;padding:3px 9px;border-radius:7px;border:1px solid var(--edge);background:transparent;color:var(--ink)}
 .seg2 button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
+.sui button.danger{width:auto;padding:0 10px;font-size:11.5px;background:rgba(230,176,92,.2);color:var(--warn)}
+#bBisque.danger{color:var(--warn);border-color:var(--warn)}
 #bErase[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
 .brushbar ~ .sui, .stage.brush .hs{}
 .hs{position:absolute;left:0;top:0;display:flex;align-items:center;gap:8px;pointer-events:none;will-change:transform}
@@ -305,9 +307,11 @@ html.fit body{padding-block:12px 12px}
           <div class="bsw" id="brushSw" role="group" aria-label="塗る釉"></div>
           <div class="brow"><span class="m">太さ</span><div class="seg2" id="bSize"><button type="button" data-v=".25">細</button><button type="button" data-v=".6" aria-pressed="true">中</button><button type="button" data-v="1.3">太</button></div></div>
           <div class="brow"><span class="m">濃さ</span><div class="seg2" id="bFlow"><button type="button" data-v=".35">薄く</button><button type="button" data-v=".65" aria-pressed="true">普通</button><button type="button" data-v="1">厚く</button></div></div>
+          <button type="button" class="btn" id="bBisque" style="height:36px;font-size:12.5px;width:100%">素焼きに戻して一から塗る</button>
           <div class="brow"><button type="button" class="sbtn" id="bErase" aria-pressed="false">消しゴム</button><button type="button" class="sbtn" id="bClear">全部消す</button></div>
         </div>
         <div class="sui">
+          <button type="button" id="bisqueBtn" aria-label="素の状態（素焼き）に戻す" title="素の状態（素焼き）に戻す"><svg width="17" height="16" viewBox="0 0 17 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.5 4h14c0 6-3.2 9.5-7 9.5S1.5 10 1.5 4z"/><path d="M6 13.4 5.6 15h5.8L11 13.4" /><path d="M12.5 1.2 14 2.7M4.5 1.2 3 2.7" stroke-linecap="round"/></svg></button>
           <button type="button" id="brushBtn" aria-pressed="false" aria-label="筆で釉を塗る" title="筆で釉を塗る"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 1.5 7.2 8.8"/><path d="M7.2 8.8c-1.6-.4-3.4.5-3.6 2.4-.2 1.4-.8 2.3-2.1 2.8 2.6 1 5.7.4 6.6-1.7.5-1.2.2-2.6-.9-3.5z" fill="currentColor"/></svg></button>
           <button type="button" id="autoBtn" aria-pressed="false" aria-label="自動回転" title="自動回転"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8A5.5 5.5 0 1 1 11 3.4"/><path d="M11 1v3h3"/></svg></button>
           <button type="button" id="zoomOut" aria-label="縮小" title="縮小"><svg width="14" height="14" viewBox="0 0 14 14" stroke="currentColor" stroke-width="1.6"><path d="M2 7h10"/></svg></button>
@@ -528,6 +532,7 @@ function applyTint(r,T){
   r.tinted=true;
 }
 function nameOf(s,r,atm=s.atm){
+  if(s.bisque)return ['素焼き','すやき'];
   if(s.tint&&s.tint.name&&atm===s.atm)return [s.tint.name,s.tint.yomi||''];
   const CN={fe:'鉄',cu:'銅',co:'コバルト',mn:'マンガン',ni:'ニッケル',cr:'クロム',crsn:'桃色',ru:'ルチル'};
   if(s.base==='jun'&&s.col==='cu'&&atm>.45&&r.splash)return ['鈞窯 紫斑','きんよう しはん'];
@@ -563,7 +568,7 @@ function nameOf0(s,r,atm){
   }
 }
 function tagsOf(s,r){
-  const t=[];
+  const t=[];if(s.bisque)return [['釉なし','']];
   if(r.melt<.55)t.push(['焼き不足・ザラつき','warn']);else if(r.melt<.95)t.push(['溶けかけ','warn']);
   if(r.over>.35)t.push(['釉が流れる','warn']);
   if(s.col==='cu'&&r.over>.3)t.push(['銅が揮発し色抜け','warn']);
@@ -579,6 +584,7 @@ function tagsOf(s,r){
   return t;
 }
 function notesOf(s,r){
+  if(s.bisque){const C=CLAYS[s.clay];return [['成分','釉を掛けていない素焼きの状態。筆で釉を塗ると、その部分だけに釉が乗る。'],['雰囲気','塗った釉は、今の雰囲気の設定で焼いた色になる。'],['温度',`本焼きの温度は${s.temp}℃の設定。塗った釉の溶け具合に効く。`],['冷却','塗った釉の結晶やツヤは、冷却の設定で変わる。'],['素地',`${C.label}の素焼き。釉を塗らなかった所は、この土の色のまま焼き締まる。`]]}
   const B=BASES[s.base],C=CLAYS[s.clay],p=+s.amt,a=s.atm,k=s.col,w=atmWord(a);
   let comp;
   switch(k){
@@ -660,7 +666,7 @@ function flowerMask(x,y,cell,R,P){
   return best;
 }
 function clayColorN(r,s,a1,a3,a4){
-  let c=r.clay;
+  let c=s.bisque?CLAYS[s.clay].ox:r.clay;
   if(s.clay==='shigaraki'&&a3>.86)return [240,234,222];
   if((s.clay==='stoneware'||s.clay==='red'||s.clay==='shigaraki')&&r.atm<.5)c=mix(c,[206,120,70],.35*(1-r.atm*2)*clamp((a1-.5)*3));
   if(s.clay!=='porcelain'&&r.atm>.5&&a3>.8)c=mix(c,[40,32,28],.6);
@@ -674,7 +680,7 @@ const VESSELS={
   yunomi:{label:'湯呑',elev:.2,foot:{r:2.8,h:.7},body:[[.8,3.2],[1.6,3.45],[4,3.55],[7,3.62],[9,3.72]],wall:.4,floorH:1.3,gl:2.2,drip:1.6,pool:.6},
   hanaire:{label:'花入',elev:.18,foot:{r:3.2,h:.6},body:[[.7,3.8],[2,4.7],[4,5.25],[6,5.3],[8,4.8],[10,3.2],[11.5,1.8],[12.5,1.5],[13.6,1.7],[14,1.95]],wall:.4,floorH:1.2,gl:3.2,drip:2.2,pool:.5},
 };
-const state={vessel:'chawan',col:'cu',amt:.8,base:'clear',atm:.85,temp:1250,cool:.15,clay:'porcelain',thick:.7,tint:null};
+const state={vessel:'chawan',col:'cu',amt:.8,base:'clear',atm:.85,temp:1250,cool:.15,clay:'porcelain',thick:.7,tint:null,bisque:false};
 const KEYS=Object.keys(state);
 const pick=o=>{const x={};KEYS.forEach(k=>{if(o&&o[k]!==undefined)x[k]=o[k]});return x};
 
@@ -782,6 +788,7 @@ function paintTexture(s,r,Y0=0,Y1=TH-1){
         case 'inner':{glazed=true;const dd=rimH-a.h;t=Math.min(.55+.25*clamp(dd/3),.08+dd/.3);break}
         case 'floor':{glazed=true;const qq=a.r/(rimR*V.pool);t=.55+(.4+run*.8)*Math.exp(-qq*qq*1.2);break}
       }
+      if(s.bisque)glazed=false;
       let c,ro;
       if(glazed){t=t*tm+(F.n2[i]-.5)*.3;let fl=0;
         if(r.flower>0){const u=(x+.5)/TW;fl=(a.type==='floor'?flowerMask(a.r*Math.cos(u*6.2832)+40,a.r*Math.sin(u*6.2832)+40,2.4,r.flowerR,0):flowerMask(u*FP*2.4,a.s,2.4,r.flowerR,FP))*r.flower}
@@ -789,7 +796,7 @@ function paintTexture(s,r,Y0=0,Y1=TH-1){
         ro=clamp(1-gloss*.93+(F.n2[i]-.5)*.06+(1-r.melt)*.25,.04,1);
         if(r.crystal>0&&F.n3[i]>1-r.crystal*.33)ro=Math.min(1,ro+.15);
         if(r.metal>0)ro=Math.max(.06,ro-r.metal*.35)}
-      else{c=clayColorN(r,s,F.n1[i],F.n3[i],F.n4[i]);ro=.92}
+      else{c=clayColorN(r,s,F.n1[i],F.n3[i],F.n4[i]);if(s.bisque)c=[lerp(c[0],242,.18),lerp(c[1],236,.18),lerp(c[2],226,.18)];ro=.92}
       // height: throwing rings, glaze relief, orange peel, crystals, crazing, clay grain
       const ring=(a.type==='outer'||a.type==='inner')?Math.sin(a.s*6.98+F.n1[i]*3)*(glazed?.012:.03):0;
       let h=.5+ring,coat=0;
@@ -984,8 +991,19 @@ function init3D(){
     setLabels(arr){spots.forEach((sp,i)=>sp.span.textContent=arr[i]);view.dirty=true}};
 }
 const brush={on:false,g:2,size:.6,flow:.65,erase:false};
+let bisqueArm=0,bisqueT=0;
+function toBisque(btn){
+  if(brushHas&&!bisqueArm){bisqueArm=1;const old=btn.innerHTML;btn.dataset.old=old;btn.textContent='塗った釉も消えます。もう一度押す';btn.classList.add('danger');
+    clearTimeout(bisqueT);bisqueT=setTimeout(()=>{bisqueArm=0;btn.innerHTML=btn.dataset.old;btn.classList.remove('danger')},3200);return}
+  clearTimeout(bisqueT);if(bisqueArm){bisqueArm=0;btn.innerHTML=btn.dataset.old;btn.classList.remove('danger')}
+  BA.fill(0);BT.fill(0);brushHas=false;state.bisque=true;state.tint=null;sync();
+  if(gl3&&!brush.on)$('brushBtn').click();
+  toast('素焼きの状態に戻しました。筆で釉を塗ってみてください');
+}
 try{gl3=init3D()}catch(e){gl3=null}
+$('bisqueBtn').onclick=()=>toBisque($('bisqueBtn'));
 if(gl3){
+  $('bBisque').onclick=()=>toBisque($('bBisque'));
   const bb=$('brushBar'),btn=$('brushBtn'),hint=$('stageHint');
   BRUSH_GLAZES.forEach((g,k)=>{const b=document.createElement('button');b.type='button';b.dataset.k=k;b.innerHTML='<i></i><span></span>';b.querySelector('span').textContent=g.n;b.title=g.n;
     b.onclick=()=>{brush.g=k;brush.erase=false;$('bErase').setAttribute('aria-pressed','false');markBrush()};$('brushSw').append(b)});
@@ -1018,7 +1036,7 @@ function renderTiles(s){
     tl.b.classList.toggle('on',k===near);tl.sp.textContent=TL[k]+(k===near?'（現在）':'');
     for(let py=0;py<ph;py++){const y=py/TS;for(let px=0;px<pw;px++){const x=px/TS,i=py*pw+px,o=i*4;
       const edge=THt*.8+tf.wave[px],dl=r.run*10*tf.drip[px];let c,shade=1-.1*(y/THt),spec=0;
-      if(y<edge+dl){let t=(.35+.85*(y/THt)+r.run*.3*(y/THt))*tm+(tf.n2[i]-.5)*.3;if(y<2.5)t=Math.min(t,.15);
+      if(!s.bisque&&y<edge+dl){let t=(.35+.85*(y/THt)+r.run*.3*(y/THt))*tm+(tf.n2[i]-.5)*.3;if(y<2.5)t=Math.min(t,.15);
         const fl=r.flower>0?flowerMask(x/12,y/12,2.4,r.flowerR,0)*r.flower:0;
         c=glazeColorN(r,t,tf.n1[i],tf.n2[i],tf.n3[i],tf.nS[i],tf.n4[i],null,fl);spec=r.gloss*.42*Math.exp(-(((x/TWt)*.5+(y/THt)*.5-.45)**2)/.004)}
       else{c=clayColorN(r,s,tf.n1[i],tf.n3[i],tf.n4[i]);shade*=.9}
@@ -1076,7 +1094,8 @@ const NODES=[
 ];
 const nodeEls={},roEls=[];
 const TINT_KEYS=['col','amt','base','atm','temp','cool','clay'];
-function dropTint(key){if(state.tint&&TINT_KEYS.includes(key)){state.tint=null;toast('写真の色合わせを外し、調合どおりの色に戻しました')}}
+function dropBisque(key){if(state.bisque&&['col','amt','base'].includes(key)){state.bisque=false;toast('釉を掛けた状態に戻しました')}}
+function dropTint(key){dropBisque(key);if(state.tint&&TINT_KEYS.includes(key)){state.tint=null;toast('写真の色合わせを外し、調合どおりの色に戻しました')}}
 function stepVal(key,dir){
   const c=CTRL[key];dropTint(key);
   if(c.type==='enum'){const o=c.opts(),i=o.indexOf(state[key]);state[key]=o[(i+dir+o.length)%o.length];c.after&&c.after(state[key])}
@@ -1149,7 +1168,7 @@ const prePop=$('prePop'),preBtn=$('preBtn');let nPre=0;
 PRESET_GROUPS.forEach(([g,list])=>{const sec=document.createElement('section');sec.className='pg';const h=document.createElement('h4');h.textContent=g;const row=document.createElement('div');
   list.forEach(([n,p])=>{nPre++;const b=document.createElement('button');b.type='button';const i=document.createElement('i');
     const r=compute({...state,...p});i.style.background=`radial-gradient(circle at 40% 35%, ${rgb(r.col)} 0 50%, ${rgb(r.thinCol)} 75%)`;
-    b.append(i,document.createTextNode(n));b.onclick=()=>{Object.assign(state,p);state.tint=null;sync();closePre();toast(`「${n}」の調合にしました`)};row.append(b)});
+    b.append(i,document.createTextNode(n));b.onclick=()=>{Object.assign(state,p);state.tint=null;state.bisque=false;sync();closePre();toast(`「${n}」の調合にしました`)};row.append(b)});
   sec.append(h,row);prePop.append(sec)});
 $('preCount').textContent=`（${nPre}種）`;
 function closePre(){prePop.hidden=true;preBtn.setAttribute('aria-expanded','false')}
@@ -1167,7 +1186,7 @@ function randomize(){
   state.atm=+(Math.round(R(0,1)/.05)*.05).toFixed(2);
   const mat=BASES[state.base].mat;state.temp=Math.round(clamp(R(mat-35,mat+45),1100,1320)/5)*5;
   state.cool=+(Math.round(R(0,1)/.05)*.05).toFixed(2);state.thick=+(Math.round(R(.35,.95)/.05)*.05).toFixed(2);
-  state.tint=null;sync();const r=compute(state);toast(`ランダムで作成：${nameOf(state,r)[0]}の${VESSELS[state.vessel].label}`);
+  state.tint=null;state.bisque=false;sync();const r=compute(state);toast(`ランダムで作成：${nameOf(state,r)[0]}の${VESSELS[state.vessel].label}`);
 }
 $('rndBtn').onclick=randomize;
 $('tintOff').onclick=()=>{state.tint=null;sync();toast('調合どおりの色に戻しました')};
@@ -1225,7 +1244,7 @@ function renderFavs(){
     const sw=document.createElement('div');sw.className='fsw';sw.style.background=`radial-gradient(circle at 42% 38%, ${rgb(r.col)} 0 46%, ${rgb(mix(r.thinCol,r.col,.4))} 60%, ${rgb(r.clay)} 66% 100%)`;
     const w=document.createElement('div');w.style.minWidth='0';const nm=document.createElement('div');nm.className='fn';nm.textContent=f.name;const mt=document.createElement('div');mt.className='fm';mt.textContent=metaOf(s);w.append(nm,mt);
     const act=document.createElement('div');act.className='fa';
-    const op=document.createElement('button');op.type='button';op.className='sbtn';op.textContent='開く';op.onclick=()=>{Object.assign(state,{tint:null},pick(f.s));sync();closePop();toast(`「${f.name}」を開きました`)};
+    const op=document.createElement('button');op.type='button';op.className='sbtn';op.textContent='開く';op.onclick=()=>{Object.assign(state,{tint:null,bisque:false},pick(f.s));sync();closePop();toast(`「${f.name}」を開きました`)};
     const del=document.createElement('button');del.type='button';del.className='sbtn'+(pendingDel===f.id?' danger':'');del.textContent=pendingDel===f.id?'本当に削除':'削除';
     del.onclick=()=>{if(pendingDel!==f.id){pendingDel=f.id;renderFavs();return}pendingDel=null;removeFav(f)};
     act.append(op,del);li.append(sw,w,act);ul.append(li)});
@@ -1355,7 +1374,7 @@ function showAna(r){
   if(r.caveat)out.append(el('p','m','写真で判断しにくい点：'+r.caveat));
   if(r.s.tint){const sw=el('div','pal');[['body','釉'],['rim','口縁'],['clay','素地']].forEach(([k,l])=>{if(!r.s.tint[k])return;const ch=el('span','chip');const i=document.createElement('i');i.style.background=rgb(r.s.tint[k]);ch.append(i,document.createTextNode(l+' '+hex(r.s.tint[k])));sw.append(ch)});out.append(el('div','m','反映する写真の色'),sw)}
   const ap=el('button','btn pri','シミュレーターに反映');ap.type='button';ap.style.width='100%';
-  ap.onclick=()=>{Object.assign(state,r.s);sync();$('favName').value=((r.name||'推定')+'（写真から）').slice(0,40);closeSheet();toast('推定した調合を反映しました。ノードで微調整できます');$('stage').scrollIntoView({behavior:reduceMotion?'auto':'smooth',block:'start'})};
+  ap.onclick=()=>{Object.assign(state,r.s,{bisque:false});sync();$('favName').value=((r.name||'推定')+'（写真から）').slice(0,40);closeSheet();toast('推定した調合を反映しました。ノードで微調整できます');$('stage').scrollIntoView({behavior:reduceMotion?'auto':'smooth',block:'start'})};
   const ap2=el('button','btn','色だけ反映（今の器・調合のまま）');ap2.type='button';ap2.style.width='100%';ap2.style.marginTop='8px';ap2.disabled=!r.s.tint;
   ap2.onclick=()=>{state.tint=r.s.tint;sync();closeSheet();toast('写真の色を今の器に反映しました');$('stage').scrollIntoView({behavior:reduceMotion?'auto':'smooth',block:'start'})};
   const again=el('button','sbtn','もう一度見比べて補正する');again.type='button';again.style.marginTop='10px';again.hidden=!gl3;again.onclick=()=>runRefine(r);
@@ -1473,11 +1492,11 @@ fitScreen();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fi
 const PUBLIC_URL='https://tokyobranding.org/yohen-lab/';
 const LISTS={vessel:Object.keys(VESSELS),col:Object.keys(COLS),base:Object.keys(BASES),clay:Object.keys(CLAYS)};
 function encodeState(st){return ['y',LISTS.vessel.indexOf(st.vessel),LISTS.col.indexOf(st.col),LISTS.base.indexOf(st.base),LISTS.clay.indexOf(st.clay),
-  Math.round(st.amt*100),Math.round(st.atm*100),st.temp,Math.round(st.cool*100),Math.round(st.thick*100)].join('-')+(st.tint&&st.tint.body?'-t-'+['body','rim','clay'].map(k=>st.tint[k]?hex(st.tint[k]).slice(1):'x').join('-'):'')}
+  Math.round(st.amt*100),Math.round(st.atm*100),st.temp,Math.round(st.cool*100),Math.round(st.thick*100)].join('-')+(st.tint&&st.tint.body?'-t-'+['body','rim','clay'].map(k=>st.tint[k]?hex(st.tint[k]).slice(1):'x').join('-'):'')+(st.bisque?'-b':'')}
 function decodeState(h){
-  const m=/^#?y-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)(?:-t-([0-9a-fx]+)-([0-9a-fx]+)-([0-9a-fx]+))?$/i.exec(h||'');if(!m)return null;const n=m.slice(1,10).map(Number);const hx6=v=>v&&/^[0-9a-f]{6}$/i.test(v)?[0,2,4].map(i=>parseInt(v.slice(i,i+2),16)):null;
+  const m=/^#?y-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)-(\d+)(?:-t-([0-9a-fx]+)-([0-9a-fx]+)-([0-9a-fx]+))?(-b)?$/i.exec(h||'');if(!m)return null;const n=m.slice(1,10).map(Number);const hx6=v=>v&&/^[0-9a-f]{6}$/i.test(v)?[0,2,4].map(i=>parseInt(v.slice(i,i+2),16)):null;
   const o={vessel:LISTS.vessel[n[0]],col:LISTS.col[n[1]],base:LISTS.base[n[2]],clay:LISTS.clay[n[3]]};if(Object.values(o).some(v=>!v))return null;
-  const C=COLS[o.col];o.amt=o.col==='none'?0:clamp(n[4]/100,0,C.max);o.atm=clamp(n[5]/100);o.temp=Math.round(clamp(n[6],1100,1320)/5)*5;o.cool=clamp(n[7]/100);o.thick=clamp(n[8]/100);o.tint=m[10]&&hx6(m[10])?{body:hx6(m[10]),rim:hx6(m[11]),clay:hx6(m[12])}:null;return o}
+  const C=COLS[o.col];o.amt=o.col==='none'?0:clamp(n[4]/100,0,C.max);o.atm=clamp(n[5]/100);o.temp=Math.round(clamp(n[6],1100,1320)/5)*5;o.cool=clamp(n[7]/100);o.thick=clamp(n[8]/100);o.tint=m[10]&&hx6(m[10])?{body:hx6(m[10]),rim:hx6(m[11]),clay:hx6(m[12])}:null;o.bisque=!!m[13];return o}
 const inArtifact=(()=>{try{return window.top!==window}catch(e){return true}})();
 function shareUrl(){const base=/^https?:$/.test(location.protocol)&&!inArtifact?location.href.split('#')[0]:PUBLIC_URL;return base+'#'+encodeState(state)}
 function shareText(){const r=compute(state),C=COLS[state.col];
