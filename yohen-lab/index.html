@@ -127,6 +127,16 @@ button:focus-visible,[tabindex]:focus-visible,input:focus-visible,label:focus-wi
 /* nodes */
 .nhead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;color:var(--dark-mute);font-size:12px}
 .nhead b{color:var(--dark)}
+.prewrap{position:relative}
+.pbtn{font-size:12.5px;padding:6px 14px;border-radius:99px;border:1px solid rgba(38,38,35,.35);background:rgba(255,255,255,.22);color:var(--dark);font-weight:500}
+.pbtn:hover{background:rgba(255,255,255,.36)}
+.pbtn b{font-weight:600}
+.prepop{position:absolute;right:0;bottom:calc(100% + 8px);z-index:35;width:min(640px,calc(100vw - 32px));max-height:70vh;overflow:auto;padding:16px;background:rgba(34,34,31,.95);display:flex;flex-direction:column;gap:12px}
+.pg h4{margin:0 0 6px;font-size:11.5px;font-weight:500;color:var(--mute);letter-spacing:.06em}
+.pg div{display:flex;flex-wrap:wrap;gap:6px}
+.pg button{color:var(--ink);display:flex;align-items:center;gap:7px;font-size:12.5px;padding:5px 11px 5px 6px;border-radius:99px;border:1px solid var(--edge);background:var(--glass2)}
+.pg button:hover{border-color:var(--acc-text)}
+.pg button i{width:16px;height:16px;border-radius:50%;display:block;box-shadow:inset 0 -2px 3px rgba(0,0,0,.3)}
 .presets{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .presets span{color:var(--dark);font-weight:500;margin-right:4px}
 .presets button{font-size:12px;padding:4px 11px;border-radius:99px;border:1px solid rgba(38,38,35,.3);background:rgba(255,255,255,.18);color:var(--dark)}
@@ -293,7 +303,8 @@ html.fit body{padding-block:12px 12px}
 
     <div class="nhead" id="nodesHead">
       <span>ノードは左から右へつながり、結果が上の器に流れます　<b>◀ ▶</b> で切替・数値は左右ドラッグや矢印キーで増減　点線の行は読み取り専用</span>
-      <div class="presets" id="presets"><span>代表的な釉</span></div>
+      <div class="prewrap"><button class="pbtn" type="button" id="preBtn" aria-expanded="false" aria-controls="prePop">代表的な釉から選ぶ <b id="preCount"></b> ▾</button>
+        <div class="g prepop" id="prePop" hidden></div></div>
     </div>
     <div class="nodes" id="nodes"></div>
     <p class="foot">色は窯業の経験則をもとにした定性的なモデルです。実際の発色は釉の調合比・窯・置き場所で変わるので、本番前にはテストピースで確かめてください。</p>
@@ -328,20 +339,26 @@ const BASES={
   ash:{key:'ash',label:'灰釉',ox:[212,204,164],red:[190,208,186],tr:.72,gloss:.8,mat:1250,run:1.5,desc:'木灰由来で黄〜緑みを帯び、よく流れて景色が出る'},
   feld:{key:'feld',label:'長石釉',ox:[243,239,231],red:[236,236,234],tr:.25,gloss:.55,mat:1270,run:.6,desc:'長石が多く乳白で不透明、発色はやわらかい'},
   matte:{key:'matte',label:'マット釉',ox:[226,224,216],red:[220,222,218],tr:.15,gloss:.16,mat:1230,run:.4,desc:'微細な結晶でツヤを抑え、色はくすむ'},
+  jun:{key:'jun',label:'鈞窯釉',ox:[200,208,198],red:[172,192,214],tr:.35,gloss:.62,mat:1280,run:1.0,desc:'釉の中で細かな分相が起き、光が散って乳青色に見える',opal:1},
+  crys:{key:'crys',label:'結晶釉',ox:[234,232,222],red:[226,230,230],tr:.8,gloss:.9,mat:1270,run:1.9,desc:'亜鉛が多くアルミナが少ない。よく流れ、徐冷で亜鉛の結晶が育つ',crys:1},
 };
 const CLAYS={
   porcelain:{label:'磁器土',ox:[244,242,236],red:[230,235,237],iron:.2,ironL:'ほぼ無し'},
   stoneware:{label:'白土',ox:[226,210,180],red:[182,178,170],iron:1.5,ironL:'少'},
   red:{label:'赤土',ox:[178,98,58],red:[94,72,60],iron:6,ironL:'多'},
   black:{label:'黒土',ox:[74,60,52],red:[50,46,44],iron:9,ironL:'多＋マンガン'},
+  shigaraki:{label:'信楽土',ox:[214,168,124],red:[168,150,132],iron:2.5,ironL:'中＋長石粒'},
 };
 const COLS={
   none:{label:'なし',chem:'',max:0,step:1,def:0},
   fe:{label:'鉄',chem:'Fe₂O₃',max:12,step:.5,def:2},
   cu:{label:'銅',chem:'CuO',max:6,step:.1,def:1},
   co:{label:'コバルト',chem:'CoO',max:3,step:.05,def:1},
+  mn:{label:'マンガン',chem:'MnO₂',max:10,step:.5,def:4},
+  ni:{label:'ニッケル',chem:'NiO',max:4,step:.1,def:1.5},
   cr:{label:'クロム',chem:'Cr₂O₃',max:3,step:.1,def:1},
   crsn:{label:'クロム＋スズ',chem:'Cr₂O₃+SnO₂',max:1,step:.02,def:.2},
+  ru:{label:'ルチル',chem:'TiO₂',max:8,step:.5,def:4},
 };
 const FE_OX=[[.6,[228,214,160]],[2.5,[206,158,68]],[5,[146,80,32]],[8,[66,38,22]],[11,[26,20,17]]];
 const FE_RED=[[.6,[206,224,212]],[1.6,[136,182,168]],[3,[112,130,96]],[5.5,[60,56,44]],[8.5,[22,21,21]]];
@@ -352,6 +369,15 @@ const CR_OX=[[.3,[176,198,148]],[1,[82,124,62]],[3,[40,72,36]]];
 const CR_ZN=[[.3,[200,176,136]],[1,[134,98,58]],[3,[84,58,36]]];
 const CRSN_OX=[[.04,[238,214,212]],[.2,[222,128,150]],[.5,[176,74,98]],[1,[118,56,58]]];
 const CRSN_RED=[[.05,[214,216,204]],[.3,[160,166,138]],[1,[96,108,80]]];
+const MN=[[.5,[214,198,208]],[2,[152,106,124]],[4,[112,70,80]],[7,[72,46,42]],[10,[58,44,34]]];
+const MN_AL=[[.5,[210,196,180]],[2,[158,122,92]],[4,[118,82,56]],[7,[76,52,36]],[10,[56,42,30]]];
+const MN_RED=[[.5,[206,196,178]],[2,[168,140,104]],[5,[120,92,62]],[10,[66,52,38]]];
+const NI_CA=[[.3,[214,200,170]],[1,[178,150,110]],[2.5,[132,104,70]],[4,[96,80,56]]];
+const NI_ZN=[[.3,[196,204,216]],[1,[128,146,176]],[2.5,[118,112,166]],[4,[86,84,128]]];
+const NI_MG=[[.3,[200,208,186]],[1,[150,166,128]],[2.5,[104,124,86]],[4,[78,92,64]]];
+const NI_RED=[[.3,[206,196,172]],[1.5,[150,120,82]],[3,[150,152,92]],[4,[130,140,74]]];
+const RU=[[1,[230,216,180]],[3,[214,192,146]],[5,[200,172,120]],[8,[214,188,110]]];
+const CRY_TINT={none:[240,240,234],fe:[214,168,88],cu:[90,182,170],co:[64,98,192],mn:[150,104,92],ni:[110,142,196],cr:[110,150,90],crsn:[220,150,170],ru:[228,216,182]};
 function ramp(p,base,stops){
   if(p<=0)return base;const s=[[0,base],...stops];
   for(let i=1;i<s.length;i++)if(p<=s[i][0]){const t=(p-s[i-1][0])/(s[i][0]-s[i-1][0]);return mix(s[i-1][1],s[i][1],t)}
@@ -364,6 +390,9 @@ function cc(kind,p,atm,base,B){
     case 'co':{const c=ramp(p,base,CO);return mix(c,[Math.min(255,c[0]*1.15+10),c[1]*.9,c[2]],sm(.4,1,atm)*.5)}
     case 'cr':{let c=ramp(p,base,CR_OX);c=mix(c,mix(c,[104,104,66],.5),sm(.3,.8,atm));if(B.key==='matte')c=mix(c,ramp(p,base,CR_ZN),.85);return c}
     case 'crsn':return mix(ramp(p,base,CRSN_OX),ramp(p,base,CRSN_RED),sm(.25,.6,atm));
+    case 'mn':{let ox=ramp(p,base,MN);if(B.key==='feld'||B.key==='matte'||B.key==='jun')ox=mix(ox,ramp(p,base,MN_AL),.7);return mix(ox,ramp(p,base,MN_RED),sm(.4,.9,atm)*.6)}
+    case 'ni':{const zn=B.key==='matte'||B.key==='crys';const ox=ramp(p,base,zn?NI_ZN:B.key==='feld'?NI_MG:NI_CA);return mix(ox,ramp(p,base,NI_RED),sm(.4,.85,atm)*(zn?.4:.8))}
+    case 'ru':{const c=ramp(p,base,RU);return mix(c,mix(c,[196,172,120],.3),sm(.3,.8,atm)*.5)}
     default:return base;
   }
 }
@@ -395,6 +424,25 @@ function compute(s,atm=s.atm){
     if(v>0){r.varieg=v;r.varA=finish(ramp(p,base,CU_OX));r.varB=finish(ramp(p,base,CU_RED));r.varW=sm(.38,.72,atm)}
     if(atm>.5)col=mix(col,[112,52,40],.22*cool*sm(.38,.72,atm));
   }
+  if(s.col==='mn'&&p>=5){
+    r.crystal=clamp((p-5)/3)*clamp((cool-.25)/.5)*clamp((melt-.6)/.4)*.8;r.crystalCol=[98,72,52];
+    r.metal=clamp((p-7)/3)*melt;if(r.metal>0)col=mix(col,[122,94,62],r.metal*.6);
+  }
+  if(s.col==='ru'&&p>.5){
+    const v=clamp((cool-.25)/.5)*clamp(p/3)*(1-clamp((p-6)/2)*.7)*clamp((melt-.6)/.4)*(.75+.25*clamp(C.iron/3));
+    if(v>0){r.varieg=v*.85;r.varA=finish(mix(col,[150,156,160],.3));r.varB=finish(mix([92,124,160],col,.2));r.varW=.66;r.streak=v*.8;r.streakCol=[118,150,186];r.rutile=v}
+    r.thinCol=finish(mix(cc('ru',p*.5,atm,base,B),[150,98,58],.6));
+  }
+  if(B.opal){
+    const ob=atm>.5?[150,178,214]:[170,196,186];
+    if(s.col==='cu'&&atm>.45&&p>.2)col=mix(ob,col,.12);else col=mix(col,ob,.42);
+    if(s.col==='cu'&&atm>.45&&p>.2){r.varieg=Math.max(r.varieg,.9);r.varA=finish(col);r.varB=finish([150,52,104]);r.varW=clamp(.18+p*.12,.15,.6);r.splash=1}
+  }
+  if(B.crys){
+    if(s.col==='ni')col=mix(col,[150,118,84],.6);else if(s.col!=='none')col=mix(col,B.ox,.5);
+    const a=clamp((cool-.45)/.4)*clamp((melt-.75)/.25);
+    if(a>0){r.flower=a;r.flowerR=lerp(.7,1.8,a);r.flowerCol=CRY_TINT[s.col]||CRY_TINT.none}
+  }
   r.col=finish(col);
   r.tr=B.tr*Math.pow(melt,1.5)*(1-.3*cool)*(1+.08*(1-cool));
   r.gloss=B.gloss*melt*melt*(1-.28*cool*(B.key==='clear'?.6:1))*(1-.35*r.crystal)*(1+.15*over);
@@ -404,9 +452,18 @@ function compute(s,atm=s.atm){
 const atmWord=a=>a<.3?'酸化':a<.6?'中性':'還元';
 const coolRate=c=>Math.round(lerp(300,40,c));
 function nameOf(s,r,atm=s.atm){
+  const CN={fe:'鉄',cu:'銅',co:'コバルト',mn:'マンガン',ni:'ニッケル',cr:'クロム',crsn:'桃色',ru:'ルチル'};
+  if(s.base==='jun'&&s.col==='cu'&&atm>.45&&r.splash)return ['鈞窯 紫斑','きんよう しはん'];
+  if(s.base==='crys'&&s.col!=='none'&&r.flower>.25)return [CN[s.col]+'結晶釉',''];
+  return nameOf0(s,r,atm);
+}
+function nameOf0(s,r,atm){
   const p=s.col==='cu'?s.amt*(1-.55*r.over):s.amt,a=atm;
   switch(s.col){
-    case 'fe':{const tm=()=>r.streak>.3?['禾目天目','のぎめてんもく']:r.crystal>.25?['油滴天目','ゆてきてんもく']:['天目','てんもく'];
+    case 'fe':{
+      if(p>=8&&a<.35&&s.cool<.12&&s.clay!=='porcelain')return ['瀬戸黒','せとぐろ'];
+      if(p>=3&&p<6.5&&s.base==='ash'&&a>=.3&&a<=.6&&s.thick<.55)return ['伊羅保','いらぼ'];
+      const tm=()=>r.streak>.3?['禾目天目','のぎめてんもく']:r.crystal>.25?['油滴天目','ゆてきてんもく']:['天目','てんもく'];
       if(a<.35)return p<1?['淡黄釉','たんおうゆう']:p<3.5?['黄瀬戸','きせと']:p<6.5?['飴釉','あめゆう']:r.crystal>.25?['柿天目','かきてんもく']:['黒釉','こくゆう'];
       if(a>.65)return p<.9?['影青','いんちん']:p<2.6?['青磁','せいじ']:p<5?['蕎麦釉','そばゆう']:tm();
       return p<3?['米色青磁','べいしょくせいじ']:p<6?['鉄釉','てつゆう']:tm();}
@@ -416,7 +473,12 @@ function nameOf(s,r,atm=s.atm){
     case 'co':return p<.4?['薄瑠璃','うするり']:['瑠璃釉','るりゆう'];
     case 'cr':return s.base==='matte'?['茶褐釉','ちゃかつゆう']:['クロム緑釉','くろむりょくゆう'];
     case 'crsn':return a<.4?(p<.1?['桜色釉','さくらいろゆう']:['クロム錫ピンク','くろむすずぴんく']):['灰緑釉','かいりょくゆう'];
-    default:if(s.base==='ash')return a>.5?['青灰釉','せいかいゆう']:['黄灰釉','きばいゆう'];
+    case 'mn':return a<.6?(r.metal>.3?['ブロンズ釉','ぶろんずゆう']:p<3?['紫褐釉','しかつゆう']:['マンガン茶釉','まんがんちゃゆう']):['マンガン褐釉','まんがんかつゆう'];
+    case 'ni':if(s.base==='matte'||s.base==='crys')return ['ニッケルブルー','にっけるぶるー'];if(s.base==='feld')return ['ニッケル灰緑釉','にっけるかいりょくゆう'];return a>.6&&p>2.5?['ニッケル黄緑釉','にっけるきみどりゆう']:['ニッケル茶釉','にっけるちゃゆう'];
+    case 'ru':return r.rutile>.3?['ルチルブルー','るちるぶるー']:p>6?['ルチル黄釉','るちるきゆう']:['ルチル釉','るちるゆう'];
+    default:if(s.base==='jun')return a>.5?['鈞窯 天青','きんよう てんせい']:['鈞窯 月白','きんよう げっぱく'];
+      if(s.base==='crys')return r.flower>.25?['結晶釉','けっしょうゆう']:['流し釉','ながしゆう'];
+      if(s.base==='ash')return a>.5?['青灰釉','せいかいゆう']:['黄灰釉','きばいゆう'];
       if(s.base==='feld')return s.clay==='porcelain'?['乳白釉','にゅうはくゆう']:['志野','しの'];
       if(s.base==='matte')return ['マット白釉','まっとしろゆう'];
       return ['透明釉','とうめいゆう'];
@@ -429,7 +491,12 @@ function tagsOf(s,r){
   if(s.col==='cu'&&r.over>.3)t.push(['銅が揮発し色抜け','warn']);
   if(r.crystal>.2)t.push([s.atm>.5?'油滴結晶':'鉄の結晶（柿）','good']);
   if(r.streak>.3)t.push(['禾目（筋状の結晶）','good']);
-  if(r.varieg>.3)t.push(['紅緑の斑・窯変','good']);
+  if(r.varieg>.3&&s.col==='cu'&&!r.splash)t.push(['紅緑の斑・窯変','good']);
+  if(r.splash)t.push(['紫斑','good']);
+  if(r.flower>.2)t.push(['大きな結晶（花）','good']);
+  if(r.metal>.3)t.push(['金属光沢','good']);
+  if(r.rutile>.3)t.push(['ルチルの斑','good']);
+  if(s.base==='crys'&&s.cool<.45)t.push(['徐冷しないと結晶が出ない','warn']);
   return t;
 }
 function notesOf(s,r){
@@ -441,6 +508,9 @@ function notesOf(s,r){
     case 'co':comp=`コバルト ${p}%。雰囲気に左右されにくく、少量でも強く青に発色する。`;break;
     case 'cr':comp=`クロム ${p}%。主に緑。${s.base==='matte'?'亜鉛を含むマット釉ではクロムが茶色に転ぶ。':''}`;break;
     case 'crsn':comp=`クロム ${p}%＋スズ 5%。酸化でピンク〜えんじに発色する。`;break;
+    case 'mn':comp=`マンガン ${p}%。紫・茶・黒を出す。${p>=7?'多いと金属のようなブロンズ肌になる。':p>=5?'5%を超えると冷める途中で結晶が析出する。':''}`;break;
+    case 'ni':comp=`ニッケル ${p}%。単独では落ち着いた茶や緑。基礎釉の成分で色が大きく変わる。`;break;
+    case 'ru':comp=`ルチル ${p}%。チタンと鉄が冷める途中で結晶化し、斑や筋を作る。${p>6?'多すぎると不透明な黄色みに。':''}`;break;
     default:comp='発色剤なし。基礎釉そのものの色になる。';
   }
   comp+=` 基礎釉は${B.label}で、${B.desc}。`;
@@ -449,6 +519,9 @@ function notesOf(s,r){
     cu:{酸化:'銅イオンが緑に発色する（織部）。',中性:'還元が中途半端で、赤と緑が斑に出る。',還元:'銅が金属コロイドまで還元され、光を散乱して赤に。'},
     co:{酸化:'どの雰囲気でもほぼ同じ青。',中性:'どの雰囲気でもほぼ同じ青。',還元:'青はそのまま。還元でわずかに紫みが増す。'},
     cr:{酸化:'安定した緑。',中性:'やや沈んだ緑に。',還元:'還元でくすんだオリーブ緑になる。'},
+    mn:{酸化:'マンガンはシリカと結びついて紫〜褐色に。アルミナが多い釉では茶に寄る。',中性:'雰囲気の影響は小さく、茶〜紫褐色。',還元:'還元でも大きくは変わらず、黄土〜茶褐色に。'},
+    ni:{酸化:'石灰釉では茶、亜鉛を含む釉では鋼のような青、マグネシアでは緑に。',中性:'基礎釉による色の差がそのまま出る。',還元:'還元では少量で茶、多いと黄緑に寄る。'},
+    ru:{酸化:'チタンが冷める途中で結晶になり、青白い斑や筋が浮く。',中性:'チタンの斑は雰囲気より冷却の速さで決まる。',還元:'還元でも斑は出るが、泡や肌荒れが出やすい。'},
     crsn:{酸化:'ピンクは酸化でしか出ない。',中性:'還元気味になるとピンクが弱まる。',還元:'還元ではピンクが消え、灰緑になる。'},
     none:{酸化:'発色剤がないので変化は小さめ。灰釉なら黄みが出る。',中性:'発色剤がないので変化は小さめ。',還元:'釉や土の微量の鉄が還元され、うっすら青みを帯びる。'}
   };
@@ -460,7 +533,11 @@ function notesOf(s,r){
   else tp=`${s.temp}℃は熟成温度（約${B.mat}℃）の範囲。釉がよく溶けて本来の色に。`;
   let cl=s.cool<.35?'急冷。結晶ができず、透明感のある鮮やかな色に。':s.cool>.65?'徐冷。釉の中で結晶が育ち、不透明・半ツヤに寄る。':'中くらいの冷却。結晶はわずか。';
   if(r.crystal>.2)cl+=a>.5?' 鉄の結晶が銀色の斑点（油滴）として浮かぶ。':' 表面に鉄が赤錆色に析出する（柿天目・鉄赤）。';
-  if(r.streak>.3)cl+=' 釉が流れながら結晶が育ち、筋状の禾目に。';
+  if(r.streak>.3&&s.col==='fe')cl+=' 釉が流れながら結晶が育ち、筋状の禾目に。';
+  if(r.rutile>.3)cl+=' チタンの結晶が青白い斑として浮かぶ（ルチルブルー）。';
+  if(r.flower>.2)cl+=' 1040〜1090℃あたりで亜鉛の結晶（ウィレマイト）が花のように大きく育つ。';
+  else if(s.base==='crys')cl+=' 結晶釉は徐冷しないと結晶が育たず、よく流れる透明釉になる。';
+  if(r.splash)cl+=' 乳青の地に、銅の紅紫が斑に浮く。';
   const cy=s.clay==='porcelain'?'白い磁器土なので、釉の色がそのままクリアに出る。':`${C.label}の鉄分が釉に溶け出し、薄い所から透けて暗く渋い色に。${a>.5?'還元で土も灰〜黒っぽく焼き締まる。':''}`;
   return [['成分',comp],['雰囲気',at],['温度',tp],['冷却',cl],['素地',cy]];
 }
@@ -477,7 +554,7 @@ function vnp(x,y,s,P){ // value noise, periodic in x with period P cells (P=0: n
   const a=hash(x0,yi,s),b=hash(x1,yi,s),c=hash(x0,yi+1,s),d=hash(x1,yi+1,s);
   return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;
 }
-function glazeColorN(r,t,a1,a2,a3,aS,a4,clay){
+function glazeColorN(r,t,a1,a2,a3,aS,a4,clay,fl){
   let g=r.col;
   if(r.varieg>0){const k=clamp((a1-(1-r.varW))*5+.5);g=mix(g,mix(r.varA,r.varB,k),r.varieg)}
   g=mix(g,r.thinCol,clamp((.6-t)/.5)*.9);
@@ -485,13 +562,25 @@ function glazeColorN(r,t,a1,a2,a3,aS,a4,clay){
   if(r.crystal>0){const thr=1-r.crystal*.33;if(a3>thr)g=mix(g,r.crystalCol,clamp((a3-thr)*14))}
   if(r.streak>0)g=mix(g,r.streakCol,r.streak*clamp((aS-.5)*3.2)*clamp(t));
   const vis=clamp(r.tr*(1.05-.4*t)+(1-t*4)*.9);
-  g=mix(g,mul(g,clay||r.clay),vis*.92);
+  if(fl>0)g=mix(g,r.flowerCol,clamp(fl));
+  g=mix(g,mul(g,clay||r.clay),vis*.92*(1-clamp(fl||0)*.6));
   const gr=(a4-.5)*70*(1-r.melt)+(a2-.5)*10;
   return [g[0]+gr,g[1]+gr,g[2]+gr];
 }
+function flowerMask(x,y,cell,R,P){
+  const cx=Math.floor(x/cell),cy=Math.floor(y/cell),Wd=P*cell;let best=0;
+  for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const gx=cx+i,gy=cy+j,hx=P?((gx%P)+P)%P:gx;
+    if(hash(hx,gy,31)>.42)continue;
+    const px=(gx+.2+.6*hash(hx,gy,32))*cell,py=(gy+.2+.6*hash(hx,gy,33))*cell;
+    let dx=x-px;if(P){dx=((dx%Wd)+Wd*1.5)%Wd-Wd/2}
+    const dy=y-py,d=Math.hypot(dx,dy),rr=R*(.55+.45*hash(hx,gy,34));
+    if(d<rr){const ang=Math.atan2(dy,dx),fan=.88+.12*Math.sin(ang*22+hash(hx,gy,35)*6+d*4)*Math.min(1,d/rr*2.5);const m=clamp((rr-d)/.3)*fan*(.75+.25*clamp(d/rr*1.6));if(m>best)best=m}}
+  return best;
+}
 function clayColorN(r,s,a1,a3,a4){
   let c=r.clay;
-  if((s.clay==='stoneware'||s.clay==='red')&&r.atm<.5)c=mix(c,[206,120,70],.35*(1-r.atm*2)*clamp((a1-.5)*3));
+  if(s.clay==='shigaraki'&&a3>.86)return [240,234,222];
+  if((s.clay==='stoneware'||s.clay==='red'||s.clay==='shigaraki')&&r.atm<.5)c=mix(c,[206,120,70],.35*(1-r.atm*2)*clamp((a1-.5)*3));
   if(s.clay!=='porcelain'&&r.atm>.5&&a3>.8)c=mix(c,[40,32,28],.6);
   const gr=(a4-.5)*26;return [c[0]+gr,c[1]+gr,c[2]+gr];
 }
@@ -566,7 +655,7 @@ function makeFields(key){
       f.n4[i]=hash(x,y,7);
     }}
   for(let x=0;x<TW;x++){const u=(x+.5)/TW;f.wave[x]=vnp(u*PW,3.3,9,PW)-.5;f.drip[x]=clamp((vnp(u*PD,1.7,8,PD)-.52)/.48)}
-  return FIELDS[key]=f;
+  f.Cref=Cref;return FIELDS[key]=f;
 }
 const texCanvas=document.createElement('canvas');texCanvas.width=TW;texCanvas.height=TH;
 const rouCanvas=document.createElement('canvas');rouCanvas.width=TW;rouCanvas.height=TH;
@@ -575,7 +664,7 @@ const texImg=texCtx.createImageData(TW,TH),rouImg=rouCtx.createImageData(TW,TH);
 function paintTexture(s,r){
   const V=VESSELS[s.vessel],P=makeProfile(s.vessel),F=makeFields(s.vessel);
   const d=texImg.data,q=rouImg.data,tm=.55+.9*s.thick,run=r.run,rimH=P.rimH,span=Math.max(.5,rimH-V.gl),rimR=P.rimR;
-  const gloss=r.gloss;
+  const gloss=r.gloss,FP=Math.max(1,Math.round(F.Cref/2.4));
   for(let y=0;y<TH;y++){const a=F.rows[y];
     for(let x=0;x<TW;x++){const i=y*TW+x,o=i*4;let glazed=false,t=0;
       switch(a.type){
@@ -586,9 +675,12 @@ function paintTexture(s,r){
         case 'floor':{glazed=true;const qq=a.r/(rimR*V.pool);t=.55+(.4+run*.8)*Math.exp(-qq*qq*1.2);break}
       }
       let c,ro;
-      if(glazed){t=t*tm+(F.n2[i]-.5)*.3;c=glazeColorN(r,t,F.n1[i],F.n2[i],F.n3[i],F.nS[i],F.n4[i]);
+      if(glazed){t=t*tm+(F.n2[i]-.5)*.3;let fl=0;
+        if(r.flower>0){const u=(x+.5)/TW;fl=(a.type==='floor'?flowerMask(a.r*Math.cos(u*6.2832)+40,a.r*Math.sin(u*6.2832)+40,2.4,r.flowerR,0):flowerMask(u*FP*2.4,a.s,2.4,r.flowerR,FP))*r.flower}
+        c=glazeColorN(r,t,F.n1[i],F.n2[i],F.n3[i],F.nS[i],F.n4[i],null,fl);
         ro=clamp(1-gloss*.93+(F.n2[i]-.5)*.06+(1-r.melt)*.25,.04,1);
-        if(r.crystal>0&&F.n3[i]>1-r.crystal*.33)ro=Math.min(1,ro+.15)}
+        if(r.crystal>0&&F.n3[i]>1-r.crystal*.33)ro=Math.min(1,ro+.15);
+        if(r.metal>0)ro=Math.max(.06,ro-r.metal*.35)}
       else{c=clayColorN(r,s,F.n1[i],F.n3[i],F.n4[i]);ro=.92}
       d[o]=clamp(c[0],0,255);d[o+1]=clamp(c[1],0,255);d[o+2]=clamp(c[2],0,255);d[o+3]=255;
       const rv=ro*255;q[o]=rv;q[o+1]=rv;q[o+2]=rv;q[o+3]=255;
@@ -740,7 +832,8 @@ function renderTiles(s){
     for(let py=0;py<ph;py++){const y=py/TS;for(let px=0;px<pw;px++){const x=px/TS,i=py*pw+px,o=i*4;
       const edge=THt*.8+tf.wave[px],dl=r.run*10*tf.drip[px];let c,shade=1-.1*(y/THt),spec=0;
       if(y<edge+dl){let t=(.35+.85*(y/THt)+r.run*.3*(y/THt))*tm+(tf.n2[i]-.5)*.3;if(y<2.5)t=Math.min(t,.15);
-        c=glazeColorN(r,t,tf.n1[i],tf.n2[i],tf.n3[i],tf.nS[i],tf.n4[i]);spec=r.gloss*.42*Math.exp(-(((x/TWt)*.5+(y/THt)*.5-.45)**2)/.004)}
+        const fl=r.flower>0?flowerMask(x/12,y/12,2.4,r.flowerR,0)*r.flower:0;
+        c=glazeColorN(r,t,tf.n1[i],tf.n2[i],tf.n3[i],tf.nS[i],tf.n4[i],null,fl);spec=r.gloss*.42*Math.exp(-(((x/TWt)*.5+(y/THt)*.5-.45)**2)/.004)}
       else{c=clayColorN(r,s,tf.n1[i],tf.n3[i],tf.n4[i]);shade*=.9}
       d[o]=clamp(c[0]*shade+spec*255,0,255);d[o+1]=clamp(c[1]*shade+spec*255,0,255);d[o+2]=clamp(c[2]*shade+spec*255,0,255);d[o+3]=255}}
     tl.ctx.putImageData(tl.img,0,0)});
@@ -819,25 +912,67 @@ NODES.forEach(n=>{
   n.ro.forEach(([lab,fn])=>{const row=document.createElement('div');row.className='nr ro';row.innerHTML=`<span class="k">${lab}</span><span class="v"></span>`;el.append(row);roEls.push([row.querySelector('.v'),fn])});
   $('nodes').append(el);
 });
-const PRESETS=[
-  ['辰砂',{col:'cu',amt:.8,base:'clear',atm:.85,temp:1250,cool:.15,clay:'porcelain',thick:.7}],
-  ['織部',{col:'cu',amt:3.5,base:'clear',atm:.05,temp:1240,cool:.3,clay:'stoneware',thick:.6}],
+const PRESET_GROUPS=[
+ ['鉄の釉',[
   ['青磁',{col:'fe',amt:1.5,base:'clear',atm:.85,temp:1260,cool:.2,clay:'porcelain',thick:.85}],
+  ['天龍寺青磁',{col:'fe',amt:2.2,base:'ash',atm:.85,temp:1270,cool:.25,clay:'stoneware',thick:.95}],
+  ['影青',{col:'fe',amt:.6,base:'clear',atm:.8,temp:1260,cool:.15,clay:'porcelain',thick:.6}],
+  ['米色青磁',{col:'fe',amt:1.6,base:'clear',atm:.5,temp:1260,cool:.3,clay:'porcelain',thick:.8}],
   ['黄瀬戸',{col:'fe',amt:2.5,base:'ash',atm:.1,temp:1230,cool:.4,clay:'stoneware',thick:.45}],
+  ['伊羅保',{col:'fe',amt:4.5,base:'ash',atm:.45,temp:1240,cool:.4,clay:'shigaraki',thick:.4}],
+  ['飴釉',{col:'fe',amt:5,base:'clear',atm:.1,temp:1240,cool:.3,clay:'stoneware',thick:.6}],
+  ['瀬戸黒',{col:'fe',amt:10,base:'clear',atm:.1,temp:1230,cool:0,clay:'stoneware',thick:.7}],
+  ['蕎麦釉',{col:'fe',amt:4,base:'matte',atm:.7,temp:1240,cool:.5,clay:'stoneware',thick:.6}],
+  ['柿天目',{col:'fe',amt:9,base:'clear',atm:.15,temp:1250,cool:.9,clay:'stoneware',thick:.8}],
   ['油滴天目',{col:'fe',amt:8.5,base:'clear',atm:.75,temp:1270,cool:.9,clay:'black',thick:.8}],
-  ['禾目天目',{col:'fe',amt:8,base:'ash',atm:.65,temp:1290,cool:.8,clay:'black',thick:.8}],
+  ['禾目天目',{col:'fe',amt:8,base:'ash',atm:.65,temp:1290,cool:.8,clay:'black',thick:.8}]]],
+ ['銅の釉',[
+  ['辰砂',{col:'cu',amt:.8,base:'clear',atm:.85,temp:1250,cool:.15,clay:'porcelain',thick:.7}],
+  ['桃花紅',{col:'cu',amt:.3,base:'clear',atm:.9,temp:1250,cool:.15,clay:'porcelain',thick:.7}],
+  ['牛血紅',{col:'cu',amt:3,base:'clear',atm:.9,temp:1250,cool:.2,clay:'porcelain',thick:.8}],
+  ['窯変辰砂',{col:'cu',amt:1,base:'clear',atm:.55,temp:1250,cool:.2,clay:'porcelain',thick:.75}],
+  ['織部',{col:'cu',amt:3.5,base:'clear',atm:.05,temp:1240,cool:.3,clay:'stoneware',thick:.6}],
+  ['青織部',{col:'cu',amt:.6,base:'ash',atm:.1,temp:1240,cool:.3,clay:'stoneware',thick:.5}]]],
+ ['コバルト・クロム',[
   ['瑠璃',{col:'co',amt:1.5,base:'clear',atm:.5,temp:1250,cool:.2,clay:'porcelain',thick:.6}],
-  ['桜色',{col:'crsn',amt:.2,base:'feld',atm:.05,temp:1240,cool:.4,clay:'porcelain',thick:.6}],
+  ['薄瑠璃',{col:'co',amt:.25,base:'clear',atm:.5,temp:1250,cool:.2,clay:'porcelain',thick:.6}],
+  ['クロム緑',{col:'cr',amt:1,base:'clear',atm:.1,temp:1240,cool:.3,clay:'porcelain',thick:.6}],
+  ['桜色',{col:'crsn',amt:.2,base:'feld',atm:.05,temp:1240,cool:.4,clay:'porcelain',thick:.6}]]],
+ ['マンガン・ニッケル・ルチル',[
+  ['紫褐釉',{col:'mn',amt:3,base:'clear',atm:.1,temp:1250,cool:.3,clay:'porcelain',thick:.6}],
+  ['ブロンズ釉',{col:'mn',amt:9,base:'clear',atm:.1,temp:1260,cool:.5,clay:'black',thick:.7}],
+  ['ニッケルブルー',{col:'ni',amt:1.2,base:'matte',atm:.1,temp:1240,cool:.4,clay:'porcelain',thick:.6}],
+  ['ニッケル茶',{col:'ni',amt:2,base:'clear',atm:.1,temp:1240,cool:.4,clay:'stoneware',thick:.6}],
+  ['ルチルブルー',{col:'ru',amt:4,base:'clear',atm:.2,temp:1250,cool:.85,clay:'red',thick:.7}]]],
+ ['鈞窯・結晶釉',[
+  ['鈞窯 天青',{col:'none',amt:0,base:'jun',atm:.85,temp:1280,cool:.3,clay:'stoneware',thick:.9}],
+  ['鈞窯 紫斑',{col:'cu',amt:.8,base:'jun',atm:.85,temp:1280,cool:.3,clay:'stoneware',thick:.9}],
+  ['コバルト結晶釉',{col:'co',amt:.6,base:'crys',atm:.2,temp:1270,cool:.9,clay:'porcelain',thick:.8}],
+  ['銅結晶釉',{col:'cu',amt:1.5,base:'crys',atm:.1,temp:1270,cool:.9,clay:'porcelain',thick:.8}],
+  ['ニッケル結晶釉',{col:'ni',amt:1.2,base:'crys',atm:.1,temp:1270,cool:.9,clay:'porcelain',thick:.8}]]],
+ ['白・灰の釉',[
   ['志野',{col:'none',amt:0,base:'feld',atm:.15,temp:1270,cool:.6,clay:'stoneware',thick:.75}],
+  ['信楽の灰釉',{col:'none',amt:0,base:'ash',atm:.3,temp:1260,cool:.4,clay:'shigaraki',thick:.45}],
+  ['透明釉',{col:'none',amt:0,base:'clear',atm:.4,temp:1240,cool:.3,clay:'porcelain',thick:.5}]]],
 ];
-PRESETS.forEach(([n,p])=>{const b=document.createElement('button');b.type='button';b.textContent=n;b.onclick=()=>{Object.assign(state,p);sync();toast(`「${n}」の調合にしました`)};$('presets').append(b)});
+const prePop=$('prePop'),preBtn=$('preBtn');let nPre=0;
+PRESET_GROUPS.forEach(([g,list])=>{const sec=document.createElement('section');sec.className='pg';const h=document.createElement('h4');h.textContent=g;const row=document.createElement('div');
+  list.forEach(([n,p])=>{nPre++;const b=document.createElement('button');b.type='button';const i=document.createElement('i');
+    const r=compute({...state,...p});i.style.background=`radial-gradient(circle at 40% 35%, ${rgb(r.col)} 0 50%, ${rgb(r.thinCol)} 75%)`;
+    b.append(i,document.createTextNode(n));b.onclick=()=>{Object.assign(state,p);sync();closePre();toast(`「${n}」の調合にしました`)};row.append(b)});
+  sec.append(h,row);prePop.append(sec)});
+$('preCount').textContent=`（${nPre}種）`;
+function closePre(){prePop.hidden=true;preBtn.setAttribute('aria-expanded','false')}
+preBtn.onclick=()=>{const o=prePop.hidden;prePop.hidden=!o;preBtn.setAttribute('aria-expanded',String(o))};
+document.addEventListener('click',e=>{if(!prePop.hidden&&!e.target.closest('.prewrap'))closePre()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closePre()});
 
 /* ================= random ================= */
 function randomize(){
   const rp=a=>a[Math.floor(Math.random()*a.length)],R=(a,b)=>a+Math.random()*(b-a);
-  state.vessel=rp(Object.keys(VESSELS));state.base=rp(Object.keys(BASES));state.clay=rp(['porcelain','porcelain','stoneware','stoneware','red','black']);
-  state.col=rp(['fe','fe','cu','cu','co','cr','crsn','none']);const C=COLS[state.col];
-  const amtR={fe:[.8,9.5],cu:[.4,4],co:[.2,2],cr:[.3,2],crsn:[.06,.5],none:[0,0]}[state.col];
+  state.vessel=rp(Object.keys(VESSELS));state.base=rp(Object.keys(BASES));state.clay=rp(['porcelain','porcelain','stoneware','stoneware','shigaraki','red','black']);
+  state.col=rp(['fe','fe','cu','cu','co','mn','ni','ru','cr','crsn','none']);const C=COLS[state.col];
+  const amtR={fe:[.8,9.5],cu:[.4,4],co:[.2,2],mn:[1,9],ni:[.4,3],ru:[2,6],cr:[.3,2],crsn:[.06,.5],none:[0,0]}[state.col];
   state.amt=+(Math.round(R(...amtR)/C.step)*C.step).toFixed(2);
   state.atm=+(Math.round(R(0,1)/.05)*.05).toFixed(2);
   const mat=BASES[state.base].mat;state.temp=Math.round(clamp(R(mat-35,mat+45),1100,1320)/5)*5;
@@ -1004,11 +1139,11 @@ function buildPrompt(){
  "name": 釉や作風の名称（例: 辰砂、織部、青磁、油滴天目、黄瀬戸、瑠璃釉、志野、飴釉、灰釉。日本語）,
  "yomi": nameのよみ（ひらがな）,
  "vessel": "chawan"(茶碗・碗) | "sara"(皿・鉢) | "yunomi"(湯呑・カップ・筒形) | "hanaire"(花入・壺・瓶),
- "col": "none" | "fe"(鉄) | "cu"(銅) | "co"(コバルト) | "cr"(クロム) | "crsn"(クロム＋スズのピンク),
- "amt": 発色剤の量 %（fe 0〜12、cu 0〜6、co 0〜3、cr 0〜3、crsn 0〜1）,
- "base": "clear"(石灰透明釉) | "ash"(灰釉) | "feld"(長石釉・乳白) | "matte"(マット釉),
+ "col": "none" | "fe"(鉄) | "cu"(銅) | "co"(コバルト) | "mn"(マンガン) | "ni"(ニッケル) | "ru"(ルチル・チタン) | "cr"(クロム) | "crsn"(クロム＋スズのピンク),
+ "amt": 発色剤の量 %（fe 0〜12、cu 0〜6、co 0〜3、mn 0〜10、ni 0〜4、ru 0〜8、cr 0〜3、crsn 0〜1）,
+ "base": "clear"(石灰透明釉) | "ash"(灰釉) | "feld"(長石釉・乳白) | "matte"(マット釉) | "jun"(鈞窯釉・乳青) | "crys"(亜鉛結晶釉),
  "atm": 0（酸化）〜1（還元）, "temp": 1100〜1320, "cool": 0（急冷）〜1（徐冷）,
- "clay": "porcelain"(磁器土) | "stoneware"(白土・炻器) | "red"(赤土) | "black"(黒土),
+ "clay": "porcelain"(磁器土) | "stoneware"(白土・炻器) | "shigaraki"(信楽土・長石粒) | "red"(赤土) | "black"(黒土),
  "thick": 0（薄）〜1（厚）, "confidence": "高" | "中" | "低",
  "reasons": {"成分": "...", "雰囲気": "...", "温度": "...", "冷却": "...", "素地": "..."}（各60字以内、写真のどこを見て判断したか）,
  "highlights": 景色や見どころを最大3つ（各40字以内）,
