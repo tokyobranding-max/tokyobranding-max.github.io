@@ -100,6 +100,19 @@ button:focus-visible,[tabindex]:focus-visible,input:focus-visible,label:focus-wi
 .sui button{width:36px;height:36px;border-radius:10px;border:0;background:transparent;display:grid;place-items:center}
 .sui button:hover{background:var(--glass2)}
 .sui button[aria-pressed="true"]{background:var(--acc);color:var(--acc-ink)}
+.stage.brush{cursor:none}
+.bcur{position:absolute;left:0;top:0;border-radius:50%;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.45);pointer-events:none}
+.brushbar{position:absolute;right:12px;top:12px;width:262px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;background:rgba(34,34,31,.82);cursor:default}
+.bsw{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.bsw button{display:flex;align-items:center;gap:6px;font-size:11px;padding:4px 6px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:var(--ink);white-space:nowrap;overflow:hidden}
+.bsw button i{width:16px;height:16px;border-radius:50%;flex:none;box-shadow:inset 0 -2px 3px rgba(0,0,0,.3)}
+.bsw button[aria-pressed="true"]{border-color:var(--acc);background:rgba(52,183,164,.16)}
+.brow{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.seg2{display:flex;gap:4px}
+.seg2 button{font-size:11.5px;padding:3px 9px;border-radius:7px;border:1px solid var(--edge);background:transparent;color:var(--ink)}
+.seg2 button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
+#bErase[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
+.brushbar ~ .sui, .stage.brush .hs{}
 .hs{position:absolute;left:0;top:0;display:flex;align-items:center;gap:8px;pointer-events:none;will-change:transform}
 .hs i{width:24px;height:24px;border-radius:50%;border:1.6px solid var(--acc);background:rgba(52,183,164,.18);display:grid;place-items:center;flex:none;margin-left:-12px;margin-top:-12px}
 .hs i::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--acc)}
@@ -284,9 +297,18 @@ html.fit body{padding-block:12px 12px}
 
     <div class="main">
       <section class="stage" id="stage" aria-label="3Dの器。ドラッグで回転">
-        <span class="hint">ドラッグで回転・上下で傾き</span>
+        <span class="hint" id="stageHint">ドラッグで回転・上下で傾き</span>
         <div id="hots"></div>
+        <div class="bcur" id="brushCursor" hidden></div>
+        <div class="g brushbar" id="brushBar" hidden>
+          <div class="ch"><span class="t" style="font-size:13px">筆で釉を塗る</span><span class="m">焼成は今の設定</span></div>
+          <div class="bsw" id="brushSw" role="group" aria-label="塗る釉"></div>
+          <div class="brow"><span class="m">太さ</span><div class="seg2" id="bSize"><button type="button" data-v=".25">細</button><button type="button" data-v=".6" aria-pressed="true">中</button><button type="button" data-v="1.3">太</button></div></div>
+          <div class="brow"><span class="m">濃さ</span><div class="seg2" id="bFlow"><button type="button" data-v=".35">薄く</button><button type="button" data-v=".65" aria-pressed="true">普通</button><button type="button" data-v="1">厚く</button></div></div>
+          <div class="brow"><button type="button" class="sbtn" id="bErase" aria-pressed="false">消しゴム</button><button type="button" class="sbtn" id="bClear">全部消す</button></div>
+        </div>
         <div class="sui">
+          <button type="button" id="brushBtn" aria-pressed="false" aria-label="筆で釉を塗る" title="筆で釉を塗る"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14.5 1.5 7.2 8.8"/><path d="M7.2 8.8c-1.6-.4-3.4.5-3.6 2.4-.2 1.4-.8 2.3-2.1 2.8 2.6 1 5.7.4 6.6-1.7.5-1.2.2-2.6-.9-3.5z" fill="currentColor"/></svg></button>
           <button type="button" id="autoBtn" aria-pressed="false" aria-label="自動回転" title="自動回転"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8A5.5 5.5 0 1 1 11 3.4"/><path d="M11 1v3h3"/></svg></button>
           <button type="button" id="zoomOut" aria-label="縮小" title="縮小"><svg width="14" height="14" viewBox="0 0 14 14" stroke="currentColor" stroke-width="1.6"><path d="M2 7h10"/></svg></button>
           <button type="button" id="zoomIn" aria-label="拡大" title="拡大"><svg width="14" height="14" viewBox="0 0 14 14" stroke="currentColor" stroke-width="1.6"><path d="M2 7h10M7 2v10"/></svg></button>
@@ -737,12 +759,21 @@ function crazeField(F){
       const e=Math.sqrt(d2)-Math.sqrt(d1);out[y*TW+x]=e<.014?1-e/.014:0}}
   return F.craze=out;
 }
-function paintTexture(s,r){
+/* brush layer: which glaze (BI), coverage (BA) and extra thickness (BT) per texel */
+const BI=new Uint8Array(TW*TH),BA=new Uint8Array(TW*TH),BT=new Uint8Array(TW*TH);
+const BRUSH_GLAZES=[
+  {n:'鉄釉',r:{col:'fe',amt:5,base:'clear'}},{n:'黒釉',r:{col:'fe',amt:9.5,base:'clear'}},{n:'銅',r:{col:'cu',amt:1.2,base:'clear'}},
+  {n:'呉須',r:{col:'co',amt:1.5,base:'clear'}},{n:'トルコ',r:{col:'cu',amt:2.5,base:'alk'}},{n:'ルチル',r:{col:'ru',amt:4,base:'clear'}},
+  {n:'マンガン',r:{col:'mn',amt:5,base:'clear'}},{n:'灰釉',r:{col:'none',amt:0,base:'ash'}},{n:'白',r:{col:'none',amt:0,base:'feld'}}];
+let brushHas=false;
+const brushResults=s=>BRUSH_GLAZES.map(g=>compute({...s,...g.r,tint:null}));
+function paintTexture(s,r,Y0=0,Y1=TH-1){
   const V=VESSELS[s.vessel],P=makeProfile(s.vessel),F=makeFields(s.vessel);
+  const BR=brushHas?brushResults(s):null;
   const d=texImg.data,q=rouImg.data,tm=.55+.9*s.thick,run=r.run,rimH=P.rimH,span=Math.max(.5,rimH-V.gl),rimR=P.rimR;
   const gloss=r.gloss,FP=Math.max(1,Math.round(F.Cref/2.4));
   const bm=bmpImg.data,B=BASES[s.base],peel=(B.key==='feld'||B.key==='matte'?1:.35)+(1-r.melt)*1.2,CZ=r.craze>0?crazeField(F):null;
-  for(let y=0;y<TH;y++){const a=F.rows[y];
+  for(let y=Y0;y<=Y1;y++){const a=F.rows[y];
     for(let x=0;x<TW;x++){const i=y*TW+x,o=i*4;let glazed=false,t=0;
       switch(a.type){
         case 'outer':{const gl=V.gl+F.wave[x]*.7*Math.min(1,span/2),edge=gl-run*V.drip*F.drip[x];
@@ -767,11 +798,16 @@ function paintTexture(s,r){
         if(CZ){const k=CZ[i]*r.craze;if(k>0){h-=.05*k;c=[c[0]*(1-.3*k),c[1]*(1-.31*k),c[2]*(1-.33*k)]}}
         coat=clamp(gloss*1.05*(1-(1-r.melt)*.8))*(r.metal>0?.6:1);ro=Math.max(ro,.18+(1-gloss)*.7)*(r.metal>0?.55:1)}
       else{h+=(F.n4[i]-.5)*.04+(F.n2[i]-.5)*.08+(F.n3[i]>.86?-.04:0)}
+      if(BR&&BA[i]){const ba=BA[i]/255,rb=BR[BI[i]],tb=(glazed?Math.max(t,.5):.5)+BT[i]/255*.9;
+        const cb=glazeColorN(rb,tb,F.n1[i],F.n2[i],F.n3[i],F.nS[i],F.n4[i],null,0);
+        c=[lerp(c[0],cb[0],ba),lerp(c[1],cb[1],ba),lerp(c[2],cb[2],ba)];
+        const coatB=clamp(rb.gloss*1.05*(1-(1-rb.melt)*.8)),roB=Math.max(clamp(1-rb.gloss*.93+(1-rb.melt)*.25,.04,1),.18+(1-rb.gloss)*.7);
+        coat=lerp(coat,coatB,ba);ro=lerp(ro,roB,ba);h+=ba*(.04+BT[i]/255*.12)}
       d[o]=clamp(c[0],0,255);d[o+1]=clamp(c[1],0,255);d[o+2]=clamp(c[2],0,255);d[o+3]=255;
       q[o]=coat*255;q[o+1]=clamp(ro)*255;q[o+2]=0;q[o+3]=255;
       const hv=clamp(h)*255;bm[o]=hv;bm[o+1]=hv;bm[o+2]=hv;bm[o+3]=255;
     }}
-  texCtx.putImageData(texImg,0,0);rouCtx.putImageData(rouImg,0,0);bmpCtx.putImageData(bmpImg,0,0);
+  const hh=Y1-Y0+1;texCtx.putImageData(texImg,0,0,0,Y0,TW,hh);rouCtx.putImageData(rouImg,0,0,0,Y0,TW,hh);bmpCtx.putImageData(bmpImg,0,0,0,Y0,TW,hh);
 }
 function canvasTex(w,h,draw){const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),w,h);return c}
 function woodCanvas(){return canvasTex(2048,1024,(x,W,H)=>{
@@ -857,12 +893,49 @@ function init3D(){
   }
   function resize(){const w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);view.dirty=true}
   new ResizeObserver(resize).observe(stage);resize();
+  // brush
+  const ray=new THREE.Raycaster(),ndc=new THREE.Vector2(),cursor=$('brushCursor');
+  let painting=null,dirty=null;
+  function hitAt(cx,cy){if(!vessel)return null;const rc=stage.getBoundingClientRect();ndc.set((cx-rc.left)/rc.width*2-1,-(cy-rc.top)/rc.height*2+1);
+    ray.setFromCamera(ndc,camera);const h=ray.intersectObject(vessel,false)[0];return h&&h.uv?h:null}
+  function stampAt(x,y,F,P){
+    const R=brush.size,row=F.rows[Math.max(0,Math.min(TH-1,Math.round(y)))],ry=Math.max(1,R/P.total*TH);
+    const y0=Math.max(0,Math.floor(y-ry)),y1=Math.min(TH-1,Math.ceil(y+ry));
+    for(let yy=y0;yy<=y1;yy++){const rr=Math.max(.15,F.rows[yy].r),rx=Math.min(TW/2,Math.max(1,R/(2*Math.PI*rr)*TW)),dy=(yy-y)/ry;
+      const x0=Math.floor(x-rx),x1=Math.ceil(x+rx);
+      for(let xx=x0;xx<=x1;xx++){const dx=(xx-x)/rx,dd=dx*dx+dy*dy;if(dd>=1)continue;const X=((xx%TW)+TW)%TW,i=yy*TW+X;
+        const w=Math.pow(1-dd,.7)*(.72+.28*hash(X,yy,51))*brush.flow;
+        if(brush.erase){BA[i]=Math.max(0,BA[i]-w*255);if(!BA[i])BT[i]=0;continue}
+        if(BA[i]&&BI[i]!==brush.g){if(w*255>BA[i]*.6){BI[i]=brush.g;BA[i]=Math.min(255,w*255);BT[i]=0}else continue}
+        BI[i]=brush.g;BA[i]=Math.min(255,BA[i]+w*170);BT[i]=Math.min(255,BT[i]+w*22)}}
+    dirty=dirty?{y0:Math.min(dirty.y0,y0),y1:Math.max(dirty.y1,y1)}:{y0,y1};
+  }
+  function strokeTo(h){
+    const F=makeFields(state.vessel),P=makeProfile(state.vessel),x=h.uv.x*TW,y=(1-h.uv.y)*TH;
+    if(!brush.erase)brushHas=true;
+    const lp=painting.last;
+    if(lp){let dx=x-lp.x;if(dx>TW/2)dx-=TW;if(dx<-TW/2)dx+=TW;const dy=y-lp.y,ry=Math.max(1,brush.size/P.total*TH),rr=Math.max(.15,F.rows[Math.max(0,Math.min(TH-1,Math.round(y)))].r),rx=Math.max(1,brush.size/(2*Math.PI*rr)*TW);
+      const n=Math.min(200,Math.ceil(Math.max(Math.abs(dx)/(rx*.35),Math.abs(dy)/(ry*.35))));
+      for(let k=1;k<=n;k++)stampAt(lp.x+dx*k/n,lp.y+dy*k/n,F,P)}
+    else stampAt(x,y,F,P);
+    painting.last={x,y};
+  }
+  function moveCursor(cx,cy){
+    if(!brush.on){cursor.hidden=true;return}
+    const h=hitAt(cx,cy),rc=stage.getBoundingClientRect();if(!h){cursor.hidden=true;return}
+    const px=rc.height/(2*Math.tan(camera.fov*Math.PI/360)*h.distance)*brush.size*2;
+    cursor.hidden=false;cursor.style.width=cursor.style.height=Math.max(6,px)+'px';cursor.style.transform=`translate(${cx-rc.left}px,${cy-rc.top}px) translate(-50%,-50%)`;
+  }
   // interaction
   let drag=null;
-  stage.addEventListener('pointerdown',e=>{if(e.target.closest('.sui'))return;drag={x:e.clientX,y:e.clientY,t:performance.now()};stage.setPointerCapture(e.pointerId);stage.classList.add('drag');view.vel=0});
-  stage.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y,dt=Math.max(1,performance.now()-drag.t);
+  stage.addEventListener('pointerdown',e=>{if(e.target.closest('.sui')||e.target.closest('.brushbar'))return;
+    if(brush.on){const h=hitAt(e.clientX,e.clientY);if(h){painting={cx:e.clientX,cy:e.clientY,last:null};stage.setPointerCapture(e.pointerId);strokeTo(h);return}}
+    drag={x:e.clientX,y:e.clientY,t:performance.now()};stage.setPointerCapture(e.pointerId);stage.classList.add('drag');view.vel=0});
+  stage.addEventListener('pointermove',e=>{moveCursor(e.clientX,e.clientY);if(painting){painting.cx=e.clientX;painting.cy=e.clientY;const h=hitAt(e.clientX,e.clientY);if(h)strokeTo(h);else painting.last=null;return}
+    if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y,dt=Math.max(1,performance.now()-drag.t);
     view.yaw+=dx*.009;view.elev=clamp(view.elev+dy*.004,.08,.75);view.vel=dx*.009/dt*16;drag={x:e.clientX,y:e.clientY,t:performance.now()};view.dirty=true});
-  const end=()=>{if(!drag)return;drag=null;stage.classList.remove('drag')};
+  const end=()=>{if(painting){painting=null;return}if(!drag)return;drag=null;stage.classList.remove('drag')};
+  stage.addEventListener('pointerleave',()=>{cursor.hidden=true});
   stage.addEventListener('pointerup',end);stage.addEventListener('pointercancel',end);
   stage.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();view.zoom=clamp(view.zoom*(1-e.deltaY*.004),.75,1.8);view.dirty=true},{passive:false});
   stage.addEventListener('dblclick',()=>{view.yaw=-.35;view.elev=view.home;view.zoom=1;view.dirty=true});
@@ -893,6 +966,8 @@ function init3D(){
   function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;
     if(!drag){if(Math.abs(view.vel)>.0004){view.yaw+=view.vel;view.vel*=.92;view.dirty=true}else view.vel=0;
       if(view.auto&&!reduceMotion){view.yaw+=dt*.32;view.dirty=true}}
+    if(painting&&view.dirty){spin.rotation.y=view.yaw;placeCam();spin.updateMatrixWorld();const h=hitAt(painting.cx,painting.cy);if(h)strokeTo(h);else painting.last=null}
+    if(dirty){paintTexture(state,compute(state),dirty.y0,dirty.y1);dirty=null;glazeT.needsUpdate=true;rouT.needsUpdate=true;bmpT.needsUpdate=true;view.dirty=true}
     if(view.dirty&&view.fit){spin.rotation.y=view.yaw;placeCam();renderer.render(scene,camera);updateSpots();view.dirty=false}
     requestAnimationFrame(loop)}
   requestAnimationFrame(loop);
@@ -903,10 +978,27 @@ function init3D(){
     const pr=new Promise(res=>renderer.domElement.toBlob(b=>res(b),'image/jpeg',.9));
     Object.assign(view,keep);view.dirty=true;return pr;
   }
-  return {setVessel,capture,refresh(){glazeT.needsUpdate=true;rouT.needsUpdate=true;bmpT.needsUpdate=true;view.dirty=true},spots,
+  function setAuto(v){view.auto=v;ab.setAttribute('aria-pressed',String(v))}
+  function markAll(){dirty={y0:0,y1:TH-1}}
+  return {setVessel,capture,setAuto,markAll,isAuto:()=>view.auto,refresh(){glazeT.needsUpdate=true;rouT.needsUpdate=true;bmpT.needsUpdate=true;view.dirty=true},spots,
     setLabels(arr){spots.forEach((sp,i)=>sp.span.textContent=arr[i]);view.dirty=true}};
 }
+const brush={on:false,g:2,size:.6,flow:.65,erase:false};
 try{gl3=init3D()}catch(e){gl3=null}
+if(gl3){
+  const bb=$('brushBar'),btn=$('brushBtn'),hint=$('stageHint');
+  BRUSH_GLAZES.forEach((g,k)=>{const b=document.createElement('button');b.type='button';b.dataset.k=k;b.innerHTML='<i></i><span></span>';b.querySelector('span').textContent=g.n;b.title=g.n;
+    b.onclick=()=>{brush.g=k;brush.erase=false;$('bErase').setAttribute('aria-pressed','false');markBrush()};$('brushSw').append(b)});
+  window.markBrush=()=>{const R=brushResults(state);$('brushSw').querySelectorAll('button').forEach(b=>{const k=+b.dataset.k,r=R[k];b.setAttribute('aria-pressed',String(!brush.erase&&k===brush.g));b.querySelector('i').style.background=`radial-gradient(circle at 40% 35%, ${rgb(r.col)} 0 50%, ${rgb(r.thinCol)} 78%)`})};
+  const seg=(id,key)=>$(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{brush[key]=+b.dataset.v;$(id).querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))});
+  seg('bSize','size');seg('bFlow','flow');
+  $('bErase').onclick=()=>{brush.erase=!brush.erase;$('bErase').setAttribute('aria-pressed',String(brush.erase));markBrush()};
+  let clearArm=0;$('bClear').onclick=()=>{if(!clearArm){clearArm=1;$('bClear').textContent='本当に消す';$('bClear').classList.add('danger');setTimeout(()=>{clearArm=0;$('bClear').textContent='全部消す';$('bClear').classList.remove('danger')},3000);return}
+    clearArm=0;$('bClear').textContent='全部消す';$('bClear').classList.remove('danger');BA.fill(0);BT.fill(0);brushHas=false;gl3.markAll();toast('塗った釉を消しました')};
+  btn.onclick=()=>{brush.on=!brush.on;btn.setAttribute('aria-pressed',String(brush.on));bb.hidden=!brush.on;stage.classList.toggle('brush',brush.on);$('hots').hidden=brush.on;
+    hint.textContent=brush.on?'器をなぞると釉が塗れます。ろくろを回したまま筆を当てると線が引けます':'ドラッグで回転・上下で傾き';
+    if(brush.on){markBrush();if(!gl3.isAuto()&&!reduceMotion)gl3.setAuto(true)}else $('brushCursor').hidden=true};
+}
 if(!gl3){const d=document.createElement('div');d.className='nogl';d.textContent='この環境では3D表示を使えません。WebGLに対応したブラウザで開くと、器を回して見られます。';stage.append(d)}
 
 /* ================= tiles ================= */
@@ -1101,7 +1193,8 @@ function sync(){
   drawChart(state);
   $('favName').placeholder=defaultName();
   if(gl3){
-    if(lastVessel!==state.vessel){gl3.setVessel(state.vessel);lastVessel=state.vessel}
+    if(lastVessel!==state.vessel){if(lastVessel&&brushHas){BA.fill(0);BT.fill(0);brushHas=false;toast('器を変えたので、筆で塗った釉は消えました')}gl3.setVessel(state.vessel);lastVessel=state.vessel}
+    if(brush.on&&window.markBrush)markBrush();
     gl3.setLabels([`口縁：釉が薄く${state.col==='none'?'素地が透ける':'色が淡くなる'}`,`${nm} ／ ${V.label}`,`高台：${CLAYS[state.clay].label}の素地`]);
     clearTimeout(rafTex);rafTex=setTimeout(()=>requestAnimationFrame(()=>{paintTexture(state,compute(state));gl3.refresh()}),HI?110:20);
   }
