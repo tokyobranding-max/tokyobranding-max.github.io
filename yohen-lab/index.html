@@ -487,6 +487,8 @@ function compute(s,atm=s.atm){
     if(a>0){r.flower=a;r.flowerR=lerp(.7,1.8,a);r.flowerCol=CRY_TINT[s.col]||CRY_TINT.none}
   }
   r.col=finish(col);
+  {const w={clear:.22,ash:.6,jun:.8,feld:.45}[B.key]||0;
+   r.craze=clamp(w*clamp((s.thick-.45)/.4)*(.45+.55*(1-cool))*clamp((melt-.7)/.3)*(s.col==='fe'&&p<3&&atm>.5?2.2:1))}
   if(s.tint&&atm===s.atm)applyTint(r,s.tint);
   r.tr=B.tr*Math.pow(melt,1.5)*(1-.3*cool)*(1+.08*(1-cool));
   r.gloss=B.gloss*melt*melt*(1-.28*cool*(B.key==='clear'?.6:1))*(1-.35*r.crystal)*(1+.15*over);
@@ -548,6 +550,7 @@ function tagsOf(s,r){
   if(r.varieg>.3&&s.col==='cu'&&!r.splash)t.push(['紅緑の斑・窯変','good']);
   if(r.splash)t.push(['紫斑','good']);
   if(r.flower>.2)t.push(['大きな結晶（花）','good']);
+  if(r.craze>.35)t.push(['貫入','good']);
   if(r.metal>.3)t.push(['金属光沢','good']);
   if(r.rutile>.3)t.push(['ルチルの斑','good']);
   if(s.base==='crys'&&s.cool<.45)t.push(['徐冷しないと結晶が出ない','warn']);
@@ -594,6 +597,7 @@ function notesOf(s,r){
   if(r.flower>.2)cl+=' 1040〜1090℃あたりで亜鉛の結晶（ウィレマイト）が花のように大きく育つ。';
   else if(s.base==='crys')cl+=' 結晶釉は徐冷しないと結晶が育たず、よく流れる透明釉になる。';
   if(r.splash)cl+=' 乳青の地に、銅の紅紫が斑に浮く。';
+  if(r.craze>.35)cl+=' 冷める時に釉が素地より大きく縮み、細かなひび（貫入）が入る。';
   const cy=s.clay==='porcelain'?'白い磁器土なので、釉の色がそのままクリアに出る。':`${C.label}の鉄分が釉に溶け出し、薄い所から透けて暗く渋い色に。${a>.5?'還元で土も灰〜黒っぽく焼き締まる。':''}`;
   return [['成分',comp],['雰囲気',at],['温度',tp],['冷却',cl],['素地',cy]];
 }
@@ -662,7 +666,8 @@ const pick=o=>{const x={};KEYS.forEach(k=>{if(o&&o[k]!==undefined)x[k]=o[k]});re
 /* ================= 3D ================= */
 const stage=$('stage');
 let gl3=null;
-const TW=1024,TH=512;
+const HI=innerWidth>=900&&(navigator.deviceMemory||8)>=4;
+const TW=HI?2048:1024,TH=HI?1024:512;
 const PROF={},FIELDS={};
 function catmull(p0,p1,p2,p3,t){const t2=t*t,t3=t2*t;return [0,1].map(i=>.5*((2*p1[i])+(-p0[i]+p2[i])*t+(2*p0[i]-5*p1[i]+4*p2[i]-p3[i])*t2+(-p0[i]+3*p1[i]-3*p2[i]+p3[i])*t3))}
 function makeProfile(key){
@@ -684,7 +689,7 @@ function makeProfile(key){
   for(let k=1;k<=10;k++)add(Math.max(.001,fR*(1-k/10)*.92),V.floorH,'floor');
   // resample by arc length
   const L=[0];for(let i=1;i<pts.length;i++)L.push(L[i-1]+Math.hypot(pts[i].r-pts[i-1].r,pts[i].h-pts[i-1].h));
-  const total=L[L.length-1],N=220,res=[];let j=1;
+  const total=L[L.length-1],N=360,res=[];let j=1;
   for(let k=0;k<N;k++){const s=total*k/(N-1);while(j<pts.length-1&&L[j]<s)j++;const a=pts[j-1],b=pts[j],t=clamp((s-L[j-1])/(L[j]-L[j-1]||1));
     res.push({r:lerp(a.r,b.r,t),h:lerp(a.h,b.h,t),type:t<.5?a.type:b.type,s})}
   return PROF[key]={pts:res,total,rimR,rimH};
@@ -707,7 +712,7 @@ function makeFields(key){
       f.n1[i]=.65*vnp(u*P1,ys/2.4,1,P1)+.35*vnp(u*P1b,ys/.95,2,P1b);
       f.n2[i]=vnp(u*P2,ys/.55,3,P2);
       f.n3[i]=.7*vnp(u*P3,ys/.16,4,P3)+.3*vnp(u*P3b,ys/.08,11,P3b);
-      f.nS[i]=.7*vnp(u*PS,ys/1.6,5,PS)+.3*vnp(u*PSb,ys/3.6,6,PSb);}
+      f.nS[i]=vnp(u*PS,ys/1.8,5,PS);}
       f.n4[i]=hash(x,y,7);
     }}
   for(let x=0;x<TW;x++){const u=(x+.5)/TW;f.wave[x]=vnp(u*PW,3.3,9,PW)-.5;f.drip[x]=clamp((vnp(u*PD,1.7,8,PD)-.52)/.48)}
@@ -717,10 +722,26 @@ const texCanvas=document.createElement('canvas');texCanvas.width=TW;texCanvas.he
 const rouCanvas=document.createElement('canvas');rouCanvas.width=TW;rouCanvas.height=TH;
 const texCtx=texCanvas.getContext('2d'),rouCtx=rouCanvas.getContext('2d');
 const texImg=texCtx.createImageData(TW,TH),rouImg=rouCtx.createImageData(TW,TH);
+const bmpCanvas=document.createElement('canvas');bmpCanvas.width=TW;bmpCanvas.height=TH;const bmpCtx=bmpCanvas.getContext('2d'),bmpImg=bmpCtx.createImageData(TW,TH);
+// crazing (貫入): a Voronoi crack network laid over the glaze, built once per vessel
+function crazeField(F){
+  if(F.craze)return F.craze;
+  const cell=1.05,PP=Math.max(1,Math.round(F.Cref/cell)),Wd=PP*cell,out=new Float32Array(TW*TH);
+  for(let y=0;y<TH;y++){const row=F.rows[y],flat=row.type==='floor'||(row.type==='inner'&&row.r<1.6);
+    for(let x=0;x<TW;x++){const u=(x+.5)/TW;let X,Y,per;
+      if(flat){X=row.r*Math.cos(u*6.2832)+40;Y=row.r*Math.sin(u*6.2832)+40;per=0}else{X=u*Wd;Y=row.s;per=PP}
+      const cx=Math.floor(X/cell),cy=Math.floor(Y/cell);let d1=99,d2=99;
+      for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const gx=cx+i,gy=cy+j,hx=per?((gx%per)+per)%per:gx;
+        let dx=X-(gx+hash(hx,gy,41))*cell;if(per){dx=((dx%Wd)+Wd*1.5)%Wd-Wd/2}const dy=Y-(gy+hash(hx,gy,42))*cell,dd=dx*dx+dy*dy;
+        if(dd<d1){d2=d1;d1=dd}else if(dd<d2)d2=dd}
+      const e=Math.sqrt(d2)-Math.sqrt(d1);out[y*TW+x]=e<.014?1-e/.014:0}}
+  return F.craze=out;
+}
 function paintTexture(s,r){
   const V=VESSELS[s.vessel],P=makeProfile(s.vessel),F=makeFields(s.vessel);
   const d=texImg.data,q=rouImg.data,tm=.55+.9*s.thick,run=r.run,rimH=P.rimH,span=Math.max(.5,rimH-V.gl),rimR=P.rimR;
   const gloss=r.gloss,FP=Math.max(1,Math.round(F.Cref/2.4));
+  const bm=bmpImg.data,B=BASES[s.base],peel=(B.key==='feld'||B.key==='matte'?1:.35)+(1-r.melt)*1.2,CZ=r.craze>0?crazeField(F):null;
   for(let y=0;y<TH;y++){const a=F.rows[y];
     for(let x=0;x<TW;x++){const i=y*TW+x,o=i*4;let glazed=false,t=0;
       switch(a.type){
@@ -738,10 +759,19 @@ function paintTexture(s,r){
         if(r.crystal>0&&F.n3[i]>1-r.crystal*.33)ro=Math.min(1,ro+.15);
         if(r.metal>0)ro=Math.max(.06,ro-r.metal*.35)}
       else{c=clayColorN(r,s,F.n1[i],F.n3[i],F.n4[i]);ro=.92}
+      // height: throwing rings, glaze relief, orange peel, crystals, crazing, clay grain
+      const ring=(a.type==='outer'||a.type==='inner')?Math.sin(a.s*6.98+F.n1[i]*3)*(glazed?.012:.03):0;
+      let h=.5+ring,coat=0;
+      if(glazed){h+=.06*clamp(t-.55)+(F.n2[i]-.5)*.06*peel+(F.n4[i]-.5)*.1*(1-r.melt);
+        if(r.crystal>0&&F.n3[i]>1-r.crystal*.33)h+=.025;
+        if(CZ){const k=CZ[i]*r.craze;if(k>0){h-=.05*k;c=[c[0]*(1-.3*k),c[1]*(1-.31*k),c[2]*(1-.33*k)]}}
+        coat=clamp(gloss*1.05*(1-(1-r.melt)*.8))*(r.metal>0?.6:1);ro=Math.max(ro,.18+(1-gloss)*.7)*(r.metal>0?.55:1)}
+      else{h+=(F.n4[i]-.5)*.04+(F.n2[i]-.5)*.08+(F.n3[i]>.86?-.04:0)}
       d[o]=clamp(c[0],0,255);d[o+1]=clamp(c[1],0,255);d[o+2]=clamp(c[2],0,255);d[o+3]=255;
-      const rv=ro*255;q[o]=rv;q[o+1]=rv;q[o+2]=rv;q[o+3]=255;
+      q[o]=coat*255;q[o+1]=clamp(ro)*255;q[o+2]=0;q[o+3]=255;
+      const hv=clamp(h)*255;bm[o]=hv;bm[o+1]=hv;bm[o+2]=hv;bm[o+3]=255;
     }}
-  texCtx.putImageData(texImg,0,0);rouCtx.putImageData(rouImg,0,0);
+  texCtx.putImageData(texImg,0,0);rouCtx.putImageData(rouImg,0,0);bmpCtx.putImageData(bmpImg,0,0);
 }
 function canvasTex(w,h,draw){const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),w,h);return c}
 function woodCanvas(){return canvasTex(2048,1024,(x,W,H)=>{
@@ -805,14 +835,16 @@ function init3D(){
   [base,col,head].forEach(m=>{m.castShadow=true;m.receiveShadow=true});
   spin.add(head);scene.add(base,col,spin);
   const glazeT=new THREE.CanvasTexture(texCanvas);glazeT.encoding=THREE.sRGBEncoding;glazeT.anisotropy=8;
-  const rouT=new THREE.CanvasTexture(rouCanvas);
-  const mat=new THREE.MeshStandardMaterial({map:glazeT,roughnessMap:rouT,roughness:1,metalness:0,envMapIntensity:.85});
+  const rouT=new THREE.CanvasTexture(rouCanvas),bmpT=new THREE.CanvasTexture(bmpCanvas);
+  const maxAn=renderer.capabilities.getMaxAnisotropy?renderer.capabilities.getMaxAnisotropy():8;[glazeT,rouT,bmpT].forEach(t=>t.anisotropy=maxAn);
+  const mat=new THREE.MeshPhysicalMaterial({map:glazeT,roughnessMap:rouT,roughness:1,metalness:0,envMapIntensity:.8,
+    clearcoat:1,clearcoatMap:rouT,clearcoatRoughness:.07,bumpMap:bmpT,bumpScale:.32});
   let vessel=null;
   const view={yaw:-.35,elev:.26,zoom:1,auto:!reduceMotion,vel:0,dirty:true};
   function setVessel(k){
     const P=makeProfile(k);
     if(vessel){spin.remove(vessel);vessel.geometry.dispose()}
-    const geo=new THREE.LatheGeometry(P.pts.map(p=>new THREE.Vector2(p.r,p.h)),160);
+    const geo=new THREE.LatheGeometry(P.pts.map(p=>new THREE.Vector2(p.r,p.h)),256);
     vessel=new THREE.Mesh(geo,mat);vessel.position.y=.36;vessel.castShadow=true;vessel.receiveShadow=true;spin.add(vessel);
     view.fit={h:P.rimH,r:P.rimR};view.home=VESSELS[k].elev;view.elev=view.home;view.dirty=true;
   }
@@ -867,11 +899,11 @@ function init3D(){
   function capture(){
     const keep={yaw:view.yaw,elev:view.elev,zoom:view.zoom};
     view.yaw=-.35;view.elev=view.home;view.zoom=1;spin.rotation.y=view.yaw;placeCam();
-    glazeT.needsUpdate=true;rouT.needsUpdate=true;renderer.render(scene,camera);
+    glazeT.needsUpdate=true;rouT.needsUpdate=true;bmpT.needsUpdate=true;renderer.render(scene,camera);
     const pr=new Promise(res=>renderer.domElement.toBlob(b=>res(b),'image/jpeg',.9));
     Object.assign(view,keep);view.dirty=true;return pr;
   }
-  return {setVessel,capture,refresh(){glazeT.needsUpdate=true;rouT.needsUpdate=true;view.dirty=true},spots,
+  return {setVessel,capture,refresh(){glazeT.needsUpdate=true;rouT.needsUpdate=true;bmpT.needsUpdate=true;view.dirty=true},spots,
     setLabels(arr){spots.forEach((sp,i)=>sp.span.textContent=arr[i]);view.dirty=true}};
 }
 try{gl3=init3D()}catch(e){gl3=null}
@@ -989,7 +1021,7 @@ const PRESET_GROUPS=[
   ['瀬戸黒',{col:'fe',amt:10,base:'clear',atm:.1,temp:1230,cool:0,clay:'stoneware',thick:.7}],
   ['蕎麦釉',{col:'fe',amt:4,base:'matte',atm:.7,temp:1240,cool:.5,clay:'stoneware',thick:.6}],
   ['柿天目',{col:'fe',amt:9,base:'clear',atm:.15,temp:1250,cool:.9,clay:'stoneware',thick:.8}],
-  ['油滴天目',{col:'fe',amt:8.5,base:'clear',atm:.75,temp:1270,cool:.9,clay:'black',thick:.8}],
+  ['油滴天目',{col:'fe',amt:8.5,base:'clear',atm:.75,temp:1255,cool:.9,clay:'black',thick:.8}],
   ['禾目天目',{col:'fe',amt:8,base:'ash',atm:.65,temp:1290,cool:.8,clay:'black',thick:.8}]]],
  ['銅の釉',[
   ['辰砂',{col:'cu',amt:.8,base:'clear',atm:.85,temp:1250,cool:.15,clay:'porcelain',thick:.7}],
@@ -1071,7 +1103,7 @@ function sync(){
   if(gl3){
     if(lastVessel!==state.vessel){gl3.setVessel(state.vessel);lastVessel=state.vessel}
     gl3.setLabels([`口縁：釉が薄く${state.col==='none'?'素地が透ける':'色が淡くなる'}`,`${nm} ／ ${V.label}`,`高台：${CLAYS[state.clay].label}の素地`]);
-    cancelAnimationFrame(rafTex);rafTex=requestAnimationFrame(()=>{paintTexture(state,compute(state));gl3.refresh()});
+    clearTimeout(rafTex);rafTex=setTimeout(()=>requestAnimationFrame(()=>{paintTexture(state,compute(state));gl3.refresh()}),HI?110:20);
   }
   cancelAnimationFrame(rafTiles);rafTiles=requestAnimationFrame(()=>renderTiles(state));
   markCurrent();
