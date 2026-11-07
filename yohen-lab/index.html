@@ -1,0 +1,1029 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="釉薬・焼成雰囲気・温度と冷却・素地を動かして、3Dの器で焼き上がりの色を試せる陶芸シミュレーター">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>窯変ラボ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* Layout: a studio wall. Left rail of shortcuts; header actions; the 3D vessel on a banding wheel in the center window,
+   result cards left, explanation + firing log right, test pieces below, and a row of connected recipe "nodes" at the bottom. */
+:root{
+  --wall:#94948F; --ink:#F4F2EE; --mute:rgba(244,242,238,.64); --faint:rgba(244,242,238,.3);
+  --dark:#262623; --dark-mute:rgba(38,38,35,.74);
+  --glass:rgba(38,38,35,.6); --glass2:rgba(255,255,255,.07); --edge:rgba(255,255,255,.14);
+  --acc:#34B7A4; --acc-ink:#0C2925; --acc-text:#7AD9CA; --warn:#E6B05C;
+  --sans:"Inter","Noto Sans JP","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{background:var(--wall)}
+body{background-color:var(--wall);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 40px;
+  background-attachment:fixed;background-size:auto,512px 512px}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,[tabindex]:focus-visible,input:focus-visible,label:focus-within{outline:2px solid var(--acc-text);outline-offset:2px}
+.app{max-width:1600px;margin:0 auto;display:grid;grid-template-columns:64px minmax(0,1fr);gap:18px}
+@media (max-width:900px){.app{grid-template-columns:minmax(0,1fr)}.rail{display:none!important}}
+.g{background:var(--glass);border:1px solid var(--edge);border-radius:18px;-webkit-backdrop-filter:blur(20px) saturate(1.1);backdrop-filter:blur(20px) saturate(1.1);box-shadow:0 10px 36px rgba(0,0,0,.18)}
+.m{color:var(--mute);font-size:12px}
+.t{font-size:15px;font-weight:500}
+.acc{color:var(--acc-text)}
+[hidden]{display:none!important}
+
+/* rail */
+.rail{position:sticky;top:18px;align-self:start;display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 0}
+.ri{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:rgba(244,242,238,.78);background:transparent;border:0}
+.ri:hover{background:var(--glass2)}
+.ri.on{background:var(--acc);color:var(--acc-ink)}
+.rail .sp{height:1px;width:28px;background:var(--edge);margin:4px 0}
+
+.content{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.logo{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:500;color:var(--dark);margin-right:8px;letter-spacing:.02em}
+.drop{position:relative;flex:1 1 300px;max-width:470px;min-height:58px;display:flex;align-items:center;gap:12px;padding:8px 12px;border:1px dashed rgba(255,255,255,.34);border-radius:14px;background:rgba(38,38,35,.42);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);cursor:pointer;min-width:0}
+.drop.over{border-color:var(--acc-text);background:rgba(52,183,164,.18)}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.thumb{width:40px;height:40px;flex:none;border-radius:10px;background:rgba(255,255,255,.08);display:grid;place-items:center;overflow:hidden}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.drop .tx{min-width:0;flex:1}
+.drop .tx div:first-child{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sw3{display:flex;gap:4px;flex:none}
+.sw3 i{width:14px;height:14px;border-radius:4px;display:block}
+.btn{height:52px;padding:0 20px;border-radius:14px;display:inline-flex;align-items:center;justify-content:center;gap:10px;font-size:14.5px;font-weight:600;border:1px solid var(--edge);background:rgba(38,38,35,.6);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);white-space:nowrap}
+.btn:hover{background:rgba(38,38,35,.75)}
+.btn.pri{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);box-shadow:0 6px 20px rgba(52,183,164,.28)}
+.btn.pri:hover{filter:brightness(1.06)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.top .gap{flex:1 1 0;min-width:0}
+@media (max-width:640px){.top .btn{flex:1 1 auto}.top .gap{display:none}.favwrap{flex:1 1 auto}.favwrap .btn{width:100%}}
+.favwrap{position:relative}
+.count{font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid rgba(122,217,202,.5);color:var(--acc-text);font-weight:500}
+
+/* main */
+.main{display:grid;grid-template-columns:250px minmax(0,1fr) 400px;grid-template-areas:"left stage right" "tests tests right";gap:18px;align-items:start}
+@media (max-width:1300px){.main{grid-template-columns:minmax(0,1fr) 380px;grid-template-areas:"stage stage" "left right" "tests tests"}}
+@media (max-width:820px){.main{grid-template-columns:minmax(0,1fr);grid-template-areas:"stage" "left" "right" "tests"}}
+.left{grid-area:left;display:flex;flex-direction:column;gap:18px;min-width:0}
+@media (max-width:1300px){.left{display:grid;grid-template-columns:1fr 1fr}}
+@media (max-width:520px){.left{grid-template-columns:1fr}}
+.right{grid-area:right;display:flex;flex-direction:column;gap:18px;min-width:0}
+.tests{grid-area:tests;padding:16px 20px}
+
+/* stage */
+.stage{grid-area:stage;position:relative;height:clamp(380px,60vh,590px);border-radius:18px;overflow:hidden;border:1px solid var(--edge);background:#8f8e88;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+.stage.drag{cursor:grabbing}
+.stage canvas{position:absolute;inset:0;width:100%!important;height:100%!important;display:block}
+.hint{position:absolute;left:14px;top:12px;font-size:11.5px;padding:5px 10px;border-radius:99px;background:rgba(20,20,18,.45);border:1px solid var(--edge);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);pointer-events:none}
+.sui{position:absolute;right:12px;bottom:12px;display:flex;gap:6px;padding:5px;border-radius:14px;background:rgba(20,20,18,.45);border:1px solid var(--edge);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.sui button{width:36px;height:36px;border-radius:10px;border:0;background:transparent;display:grid;place-items:center}
+.sui button:hover{background:var(--glass2)}
+.sui button[aria-pressed="true"]{background:var(--acc);color:var(--acc-ink)}
+.hs{position:absolute;left:0;top:0;display:flex;align-items:center;gap:8px;pointer-events:none;will-change:transform}
+.hs i{width:24px;height:24px;border-radius:50%;border:1.6px solid var(--acc);background:rgba(52,183,164,.18);display:grid;place-items:center;flex:none;margin-left:-12px;margin-top:-12px}
+.hs i::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--acc)}
+.hs span{font-size:12px;padding:4px 10px;border-radius:8px;background:rgba(20,20,18,.55);border:1px solid var(--edge);white-space:nowrap;margin-top:-12px}
+.hs.l{flex-direction:row-reverse}
+.hs.l i{margin-left:0;margin-right:-12px}
+.hs.main span{color:var(--acc-text);border-color:rgba(122,217,202,.45)}
+.nogl{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:var(--dark);font-size:14px}
+
+/* cards */
+.card{padding:18px 20px}
+.name{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.name b{font-size:40px;font-weight:500;letter-spacing:.04em;line-height:1.1;text-wrap:balance}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08);text-align:center;font-size:12.5px}
+.stats>div+div{border-left:1px solid rgba(255,255,255,.08)}
+.stats .ic{color:var(--acc-text);font-size:13px;line-height:1.3}
+.ring{display:block;margin:4px auto 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;font-size:13px;margin-top:6px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08);font-variant-numeric:tabular-nums}
+.why{list-style:none;margin:8px 0 0;padding:0}
+.why li{display:grid;grid-template-columns:28px 58px minmax(0,1fr);gap:6px;align-items:start;padding:9px 0;border-top:1px solid rgba(255,255,255,.07);font-size:12.5px;line-height:1.6}
+.why li:first-child{border-top:0}
+.num{width:22px;height:22px;border-radius:7px;background:rgba(52,183,164,.18);color:var(--acc-text);display:grid;place-items:center;font-size:11px;font-weight:600}
+.why .k{font-weight:500}
+.why .v{color:rgba(244,242,238,.82)}
+.ch{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.tabs{display:flex;gap:4px}
+.tabs button{border:0;background:transparent;font-size:12px;color:var(--mute);padding:4px 8px;border-radius:8px}
+.tabs button[aria-pressed="true"]{color:var(--acc-text);font-weight:500;background:rgba(52,183,164,.12)}
+.chart svg{width:100%;height:auto;display:block;margin-top:6px}
+.tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:12px}
+.tile{border:0;background:transparent;padding:0;display:flex;flex-direction:column;gap:6px;align-items:stretch;text-align:center}
+.tile canvas{width:100%;aspect-ratio:16/7;border-radius:10px;display:block}
+.tile span{font-size:12px;color:var(--mute)}
+.tile.on canvas{outline:2px solid var(--acc);outline-offset:2px}
+.tile.on span{color:var(--acc-text);font-weight:500}
+
+/* nodes */
+.nhead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;color:var(--dark-mute);font-size:12px}
+.nhead b{color:var(--dark)}
+.presets{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.presets span{color:var(--dark);font-weight:500;margin-right:4px}
+.presets button{font-size:12px;padding:4px 11px;border-radius:99px;border:1px solid rgba(38,38,35,.3);background:rgba(255,255,255,.18);color:var(--dark)}
+.presets button:hover{background:rgba(255,255,255,.34)}
+.nodes{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+@media (min-width:1440px){.nodes{grid-template-columns:repeat(5,minmax(0,1fr));gap:20px}
+  .node:not(:last-child)::after{content:"";position:absolute;right:-21px;top:66px;width:20px;border-top:1.6px dashed var(--acc)}}
+.node{position:relative;padding:0 0 10px;min-width:0}
+.nh{display:flex;align-items:center;gap:9px;padding:14px 16px 8px}
+.nic{width:26px;height:26px;border-radius:8px;background:rgba(52,183,164,.18);display:grid;place-items:center;color:var(--acc-text);flex:none}
+.ports{display:flex;justify-content:space-between;padding:0 16px 8px;font-size:10.5px;color:var(--mute);border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:6px}
+.pd{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--acc);vertical-align:middle;margin:0 6px}
+.nr{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 12px;padding:4px 6px 4px 12px;border-radius:11px;background:var(--glass2);font-size:12.5px;min-height:38px}
+.nr .k{color:var(--mute);white-space:nowrap}
+.nr .v{display:flex;align-items:center;gap:2px;min-width:0}
+.st{width:28px;height:28px;border:0;background:transparent;border-radius:8px;color:var(--acc-text);font-size:10px;display:grid;place-items:center;flex:none}
+.st:hover{background:rgba(52,183,164,.15)}
+.val{font-weight:500;text-align:center;min-width:64px;padding:2px 2px;border-radius:6px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.val.drag{cursor:ew-resize;touch-action:none}
+.nr.ro{background:transparent;border:1px dashed rgba(255,255,255,.15);padding-right:12px}
+.nr.ro .v{font-weight:400;color:var(--ink);text-align:right;white-space:normal}
+.badge{margin-left:auto;font-size:10px;padding:2px 8px;border-radius:99px;border:1px solid rgba(122,217,202,.45);color:var(--acc-text)}
+
+/* popover, sheet, toast */
+.pop{position:absolute;right:0;top:60px;z-index:30;width:min(380px,calc(100vw - 32px));max-height:70vh;overflow:auto;padding:16px;background:rgba(34,34,31,.92)}
+.saverow{display:flex;gap:8px;margin:8px 0 12px}
+.saverow input{flex:1;min-width:0;font:inherit;font-size:13px;padding:8px 10px;border-radius:10px;border:1px solid var(--edge);background:rgba(255,255,255,.06);color:var(--ink)}
+.saverow .btn{height:38px;padding:0 14px;font-size:13px}
+.fl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.fi{display:grid;grid-template-columns:42px minmax(0,1fr);gap:2px 12px;align-items:center;padding:10px;border-radius:12px;background:var(--glass2);border:1px solid transparent}
+.fi.cur{border-color:var(--acc)}
+.fsw{width:42px;height:42px;border-radius:50%;grid-row:span 2;box-shadow:inset 0 -5px 8px rgba(0,0,0,.25)}
+.fn{font-weight:500;font-size:13px;overflow-wrap:anywhere;line-height:1.35}
+.fm{font-size:11px;color:var(--mute);line-height:1.4}
+.fa{grid-column:2;display:flex;gap:6px;margin-top:4px}
+.sbtn{font-size:12px;padding:3px 10px;border-radius:8px;border:1px solid var(--edge);background:transparent}
+.sbtn:hover{border-color:var(--acc-text);color:var(--acc-text)}
+.sbtn.danger{color:var(--warn);border-color:var(--warn)}
+.empty{font-size:12.5px;color:var(--mute);padding:12px;border:1px dashed var(--edge);border-radius:12px;margin:0}
+.sheet{position:fixed;z-index:40;top:max(16px,env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:max(16px,env(safe-area-inset-bottom,0px));width:min(440px,calc(100vw - 32px));overflow:auto;padding:20px;background:rgba(34,34,31,.94);display:flex;flex-direction:column;gap:14px}
+.sheet .x{width:34px;height:34px;border-radius:10px;border:1px solid var(--edge);background:transparent;display:grid;place-items:center}
+.sheet img{width:100%;max-height:220px;object-fit:contain;border-radius:12px;background:rgba(255,255,255,.04)}
+.pal{display:flex;gap:6px;flex-wrap:wrap}
+.chip{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:var(--mute);font-variant-numeric:tabular-nums}
+.chip i{width:40px;height:26px;border-radius:6px;display:block;border:1px solid var(--edge)}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{font-size:11.5px;padding:3px 10px;border-radius:99px;background:var(--glass2);border:1px solid var(--edge)}
+.tag.good{color:var(--acc-text);border-color:rgba(122,217,202,.45)}
+.tag.warn{color:var(--warn);border-color:rgba(230,176,92,.5)}
+.loading{display:flex;align-items:center;gap:10px;color:var(--mute)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--acc);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25;transform:scale(.7)}}
+.toast{position:fixed;z-index:50;left:50%;bottom:max(20px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);padding:10px 16px;border-radius:12px;background:rgba(34,34,31,.92);border:1px solid var(--edge);font-size:13px;max-width:calc(100vw - 32px)}
+.foot{font-size:11.5px;color:var(--dark-mute);max-width:80ch}
+@media (prefers-reduced-motion:reduce){.dot{animation:none}}
+</style>
+
+<div class="app">
+  <nav class="g rail" aria-label="ショートカット">
+    <button class="ri on" type="button" data-go="stage" aria-label="シミュレーター" title="シミュレーター"><svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor"><rect x="1" y="1" width="7" height="9" rx="2"/><rect x="10" y="1" width="7" height="5" rx="2"/><rect x="1" y="12" width="7" height="5" rx="2"/><rect x="10" y="8" width="7" height="9" rx="2"/></svg></button>
+    <button class="ri" type="button" data-go="nodes" aria-label="調合ノード" title="調合ノード"><svg width="18" height="14" viewBox="0 0 18 14" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1 2h16c0 7-4 11-8 11S1 9 1 2z"/></svg></button>
+    <button class="ri" type="button" data-go="photo" aria-label="写真から分析" title="写真から分析"><svg width="18" height="16" viewBox="0 0 18 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="3.5" width="16" height="11" rx="2"/><circle cx="9" cy="9" r="3"/><path d="M6 3.5 7 1h4l1 2.5"/></svg></button>
+    <button class="ri" type="button" data-go="favs" aria-label="保存したパターン" title="保存したパターン"><svg width="13" height="16" viewBox="0 0 13 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1.5 1h10v13.5L6.5 11l-5 3.5z"/></svg></button>
+    <button class="ri" type="button" data-go="chart" aria-label="焼成記録" title="焼成記録"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="9" cy="9" r="7.5"/><path d="M9 4.5V9l3 2"/></svg></button>
+    <button class="ri" type="button" data-go="why" aria-label="なぜこの色か" title="なぜこの色か"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="9" cy="9" r="7.5"/><path d="M9 8v5M9 5v.5"/></svg></button>
+    <span class="sp"></span>
+    <button class="ri on" type="button" data-go="random" aria-label="ランダムで作成" title="ランダムで作成" style="margin-top:6px"><svg width="18" height="18" viewBox="0 0 17 17" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="15" height="15" rx="3.5"/><circle cx="5" cy="5" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="5" r="1.1" fill="currentColor" stroke="none"/><circle cx="8.5" cy="8.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none"/></svg></button>
+  </nav>
+
+  <div class="content">
+    <header class="top">
+      <div class="logo"><svg width="30" height="22" viewBox="0 0 30 22" fill="none" stroke="#262623" stroke-width="1.5" aria-hidden="true"><path d="M3 21h24M6 21c0-7 4-11 9-11s9 4 9 11"/><path d="M15 2c1 3 4 4 4 7a4 4 0 0 1-8 0c0-2 1-3 2-4 0 1 .5 2 1.5 2 0-2-.5-3 .5-5z" fill="#262623" stroke="none"/></svg>窯変ラボ</div>
+      <label class="drop" id="drop">
+        <input type="file" id="photo" accept="image/*" aria-label="器の写真を選ぶ">
+        <span class="thumb" id="thumb"><svg width="18" height="16" viewBox="0 0 18 16" fill="none" stroke="#F4F2EE" stroke-width="1.3"><rect x="1" y="3.5" width="16" height="11" rx="2"/><circle cx="9" cy="9" r="3"/><path d="M6 3.5 7 1h4l1 2.5"/></svg></span>
+        <span class="tx"><div id="dropT">器の写真をドロップ／選択／貼り付け</div><div class="m" id="dropS">写真から釉・発色剤・雰囲気・温度と冷却・素地を推定</div></span>
+        <span class="sw3" id="sw3"></span>
+      </label>
+      <button class="btn pri" type="button" id="anaBtn" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0l1.6 5 5 1.6-5 1.6L8 13l-1.6-4.8L1.4 6.6l5-1.6zM13 10l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg>この器を分析する</button>
+      <button class="btn" type="button" id="rndBtn"><svg width="17" height="17" viewBox="0 0 17 17" fill="none" stroke="#7AD9CA" stroke-width="1.4"><rect x="1" y="1" width="15" height="15" rx="3.5"/><circle cx="5" cy="5" r="1.1" fill="#7AD9CA" stroke="none"/><circle cx="12" cy="5" r="1.1" fill="#7AD9CA" stroke="none"/><circle cx="8.5" cy="8.5" r="1.1" fill="#7AD9CA" stroke="none"/><circle cx="5" cy="12" r="1.1" fill="#7AD9CA" stroke="none"/><circle cx="12" cy="12" r="1.1" fill="#7AD9CA" stroke="none"/></svg>ランダムで作成</button>
+      <span class="gap"></span>
+      <button class="btn" type="button" id="saveBtn"><svg width="13" height="16" viewBox="0 0 13 16" fill="none" stroke="#7AD9CA" stroke-width="1.5"><path d="M1.5 1h10v13.5L6.5 11l-5 3.5z"/></svg>この焼き上がりを保存</button>
+      <div class="favwrap">
+        <button class="btn" type="button" id="favBtn" aria-expanded="false" aria-controls="favPop" style="font-weight:400;font-size:13px">保存したパターン <span class="count" id="favCount">0</span> ▾</button>
+        <div class="g pop" id="favPop" hidden>
+          <div class="ch"><span class="t">保存したパターン</span><span class="m" id="favStatus">読み込み中…</span></div>
+          <form class="saverow" id="saveForm"><input id="favName" maxlength="40" aria-label="パターンの名前"><button class="btn pri" type="submit">名前を付けて保存</button></form>
+          <ul class="fl" id="favList"></ul>
+        </div>
+      </div>
+    </header>
+
+    <div class="main">
+      <section class="stage" id="stage" aria-label="3Dの器。ドラッグで回転">
+        <span class="hint">ドラッグで回転・上下で傾き</span>
+        <div id="hots"></div>
+        <div class="sui">
+          <button type="button" id="autoBtn" aria-pressed="false" aria-label="自動回転" title="自動回転"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13.5 8A5.5 5.5 0 1 1 11 3.4"/><path d="M11 1v3h3"/></svg></button>
+          <button type="button" id="zoomOut" aria-label="縮小" title="縮小"><svg width="14" height="14" viewBox="0 0 14 14" stroke="currentColor" stroke-width="1.6"><path d="M2 7h10"/></svg></button>
+          <button type="button" id="zoomIn" aria-label="拡大" title="拡大"><svg width="14" height="14" viewBox="0 0 14 14" stroke="currentColor" stroke-width="1.6"><path d="M2 7h10M7 2v10"/></svg></button>
+          <button type="button" id="resetView" aria-label="正面に戻す" title="正面に戻す"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/></svg></button>
+        </div>
+      </section>
+
+      <div class="left">
+        <section class="g card" aria-label="焼き上がり">
+          <div class="name"><b id="rname">—</b><span class="m" id="ryomi" style="letter-spacing:.14em"></span></div>
+          <div class="m" id="rmeta" style="margin-top:6px"></div>
+          <div class="stats">
+            <div><div class="ic"><svg width="13" height="13" viewBox="0 0 14 14"><circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M7 1a6 6 0 0 1 0 12z" fill="currentColor"/></svg></div><div class="m">ツヤ</div><div id="sGloss">—</div></div>
+            <div><div class="ic"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M7 1l6 6-6 6-6-6z"/></svg></div><div class="m">透明度</div><div id="sTr">—</div></div>
+            <div><div class="ic" id="sWarnIc"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M7 1.5 13 12.5H1z"/><path d="M7 5.5v3.5M7 10.5v.5"/></svg></div><div class="m">注意</div><div id="sWarn">—</div></div>
+          </div>
+          <div class="tags" id="rtags" style="margin-top:12px"></div>
+        </section>
+        <section class="g card" aria-label="仕上がり">
+          <div class="t" style="font-size:13.5px">仕上がり</div>
+          <svg class="ring" width="150" height="124" viewBox="0 12 164 124" aria-hidden="true">
+            <circle cx="82" cy="74" r="52" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="7"/>
+            <circle cx="82" cy="74" r="52" fill="none" stroke="#34B7A4" stroke-width="7" stroke-linecap="round" id="ring" transform="rotate(-90 82 74)"/>
+            <text x="82" y="80" text-anchor="middle" font-size="30" font-weight="500" fill="#F4F2EE" id="ringV">—</text>
+            <text x="82" y="102" text-anchor="middle" font-size="12" fill="rgba(244,242,238,.65)" id="ringL"></text>
+          </svg>
+          <div class="grid2">
+            <div><div class="m">溶け具合</div><span id="gMelt"></span></div><div><div class="m">流れ</div><span id="gRun"></span></div>
+            <div><div class="m">結晶</div><span id="gCry"></span></div><div><div class="m">窯変</div><span id="gVar"></span></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="right">
+        <section class="g card" id="whyCard" aria-label="なぜこの色になったか">
+          <div class="ch"><span class="t">なぜこの色になったか</span></div>
+          <ul class="why" id="why"></ul>
+        </section>
+        <section class="g card chart" id="chartCard" aria-label="焼成記録">
+          <div class="ch"><span class="t">焼成記録（推定）</span>
+            <div class="tabs" role="group" aria-label="グラフの種類">
+              <button type="button" data-tab="temp" aria-pressed="true">温度</button><button type="button" data-tab="atm" aria-pressed="false">雰囲気</button><button type="button" data-tab="rate" aria-pressed="false">冷却速度</button>
+            </div></div>
+          <div id="chart"></div>
+        </section>
+      </div>
+
+      <section class="g tests" aria-label="テストピース">
+        <div class="ch"><span class="t" style="font-size:13.5px">同じ調合で雰囲気だけ変えたテストピース</span><span class="m">クリックでその雰囲気に切替　<span class="acc">酸化 → 還元</span></span></div>
+        <div class="tiles" id="tiles"></div>
+      </section>
+    </div>
+
+    <div class="nhead" id="nodesHead">
+      <span>ノードは左から右へつながり、結果が上の器に流れます　<b>◀ ▶</b> で切替・数値は左右ドラッグや矢印キーで増減　点線の行は読み取り専用</span>
+      <div class="presets" id="presets"><span>代表的な釉</span></div>
+    </div>
+    <div class="nodes" id="nodes"></div>
+    <p class="foot">色は窯業の経験則をもとにした定性的なモデルです。実際の発色は釉の調合比・窯・置き場所で変わるので、本番前にはテストピースで確かめてください。</p>
+  </div>
+</div>
+
+<aside class="g sheet" id="sheet" hidden aria-label="写真から分析">
+  <div class="ch"><span class="t">写真から分析</span><button class="x" type="button" id="sheetX" aria-label="閉じる">✕</button></div>
+  <img id="sheetImg" alt="分析した器の写真">
+  <div><div class="m" style="margin-bottom:6px">写真から抽出した主な色</div><div class="pal" id="pal"></div></div>
+  <div id="anaOut" aria-live="polite"></div>
+</aside>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const clamp=(v,a=0,b=1)=>Math.min(b,Math.max(a,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const mix=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+const mul=(a,b)=>[a[0]*b[0]/255,a[1]*b[1]/255,a[2]*b[2]/255];
+const sm=(e0,e1,x)=>{const t=clamp((x-e0)/(e1-e0));return t*t*(3-2*t)};
+const desat=(c,k)=>{const l=c[0]*.3+c[1]*.59+c[2]*.11;return mix(c,[l,l,l],k)};
+const rgb=c=>`rgb(${c.map(v=>Math.round(clamp(v,0,255))).join(',')})`;
+const hex=c=>'#'+c.map(v=>Math.round(clamp(v,0,255)).toString(16).padStart(2,'0')).join('');
+const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ================= glaze model ================= */
+const BASES={
+  clear:{key:'clear',label:'石灰透明釉',ox:[238,239,233],red:[230,238,238],tr:.9,gloss:.95,mat:1230,run:.8,desc:'ガラス質で透明、ツヤが強く発色が鮮やか'},
+  ash:{key:'ash',label:'灰釉',ox:[212,204,164],red:[190,208,186],tr:.72,gloss:.8,mat:1250,run:1.5,desc:'木灰由来で黄〜緑みを帯び、よく流れて景色が出る'},
+  feld:{key:'feld',label:'長石釉',ox:[243,239,231],red:[236,236,234],tr:.25,gloss:.55,mat:1270,run:.6,desc:'長石が多く乳白で不透明、発色はやわらかい'},
+  matte:{key:'matte',label:'マット釉',ox:[226,224,216],red:[220,222,218],tr:.15,gloss:.16,mat:1230,run:.4,desc:'微細な結晶でツヤを抑え、色はくすむ'},
+};
+const CLAYS={
+  porcelain:{label:'磁器土',ox:[244,242,236],red:[230,235,237],iron:.2,ironL:'ほぼ無し'},
+  stoneware:{label:'白土',ox:[226,210,180],red:[182,178,170],iron:1.5,ironL:'少'},
+  red:{label:'赤土',ox:[178,98,58],red:[94,72,60],iron:6,ironL:'多'},
+  black:{label:'黒土',ox:[74,60,52],red:[50,46,44],iron:9,ironL:'多＋マンガン'},
+};
+const COLS={
+  none:{label:'なし',chem:'',max:0,step:1,def:0},
+  fe:{label:'鉄',chem:'Fe₂O₃',max:12,step:.5,def:2},
+  cu:{label:'銅',chem:'CuO',max:6,step:.1,def:1},
+  co:{label:'コバルト',chem:'CoO',max:3,step:.05,def:1},
+  cr:{label:'クロム',chem:'Cr₂O₃',max:3,step:.1,def:1},
+  crsn:{label:'クロム＋スズ',chem:'Cr₂O₃+SnO₂',max:1,step:.02,def:.2},
+};
+const FE_OX=[[.6,[228,214,160]],[2.5,[206,158,68]],[5,[146,80,32]],[8,[66,38,22]],[11,[26,20,17]]];
+const FE_RED=[[.6,[206,224,212]],[1.6,[136,182,168]],[3,[112,130,96]],[5.5,[60,56,44]],[8.5,[22,21,21]]];
+const CU_OX=[[.4,[186,214,176]],[1.5,[96,160,104]],[3.5,[42,114,78]],[6,[30,58,46]]];
+const CU_RED=[[.25,[216,166,164]],[.8,[172,30,42]],[2,[120,18,30]],[4,[78,30,28]],[6,[52,34,30]]];
+const CO=[[.1,[188,202,232]],[.5,[72,104,190]],[1.5,[30,50,142]],[3,[16,22,70]]];
+const CR_OX=[[.3,[176,198,148]],[1,[82,124,62]],[3,[40,72,36]]];
+const CR_ZN=[[.3,[200,176,136]],[1,[134,98,58]],[3,[84,58,36]]];
+const CRSN_OX=[[.04,[238,214,212]],[.2,[222,128,150]],[.5,[176,74,98]],[1,[118,56,58]]];
+const CRSN_RED=[[.05,[214,216,204]],[.3,[160,166,138]],[1,[96,108,80]]];
+function ramp(p,base,stops){
+  if(p<=0)return base;const s=[[0,base],...stops];
+  for(let i=1;i<s.length;i++)if(p<=s[i][0]){const t=(p-s[i-1][0])/(s[i][0]-s[i-1][0]);return mix(s[i-1][1],s[i][1],t)}
+  return s[s.length-1][1];
+}
+function cc(kind,p,atm,base,B){
+  switch(kind){
+    case 'fe':return mix(ramp(p,base,FE_OX),ramp(p,base,FE_RED),sm(.3,.75,atm));
+    case 'cu':return mix(ramp(p,base,CU_OX),ramp(p,base,CU_RED),sm(.38,.72,atm));
+    case 'co':{const c=ramp(p,base,CO);return mix(c,[Math.min(255,c[0]*1.15+10),c[1]*.9,c[2]],sm(.4,1,atm)*.5)}
+    case 'cr':{let c=ramp(p,base,CR_OX);c=mix(c,mix(c,[104,104,66],.5),sm(.3,.8,atm));if(B.key==='matte')c=mix(c,ramp(p,base,CR_ZN),.85);return c}
+    case 'crsn':return mix(ramp(p,base,CRSN_OX),ramp(p,base,CRSN_RED),sm(.25,.6,atm));
+    default:return base;
+  }
+}
+function compute(s,atm=s.atm){
+  const B=BASES[s.base],C=CLAYS[s.clay],T=s.temp,cool=s.cool;
+  const melt=clamp((T-(B.mat-110))/100),over=clamp((T-(B.mat+30))/70);
+  const base=mix(B.ox,B.red,sm(.3,.75,atm));
+  let p=s.col==='none'?0:s.amt;if(s.col==='cu')p*=1-.55*over;
+  const clay=mix(C.ox,C.red,sm(.3,.8,atm));
+  const finish=c=>{
+    if(B.key==='matte')c=desat(c,.22);
+    c=mix(c,base,(1-B.tr)*.28);
+    if(C.iron>1)c=mix(c,mul(c,[176,136,104]),.13*C.iron/9*melt);
+    if(s.col==='none'||p<.3)c=mix(c,[246,246,244],.12*cool*(B.key==='clear'?0:1));
+    return mix(c,[214,208,196],(1-melt)*.65);
+  };
+  const r={melt,over,clay,atm,crystal:0,streak:0,varieg:0};
+  let col=cc(s.col,p,atm,base,B);
+  r.thinCol=finish(cc(s.col,p*.3,atm,base,B));
+  if(s.col==='fe'&&p>=5){
+    r.crystal=clamp((p-5)/3.5)*clamp((cool-.3)/.5)*clamp((melt-.6)/.4);
+    const runny=clamp((B.run-.6)/.9+over);
+    r.streak=r.crystal*runny;r.crystal*=1-r.streak*.7;
+    r.crystalCol=atm>.5?[198,194,188]:[176,84,36];r.streakCol=atm>.5?[176,146,112]:[168,92,48];
+    if(atm<=.5)col=mix(col,[150,64,30],r.crystal*.45);
+  }
+  if(s.col==='cu'&&p>.15){
+    const v=clamp(1-Math.abs(atm-.55)/.2);
+    if(v>0){r.varieg=v;r.varA=finish(ramp(p,base,CU_OX));r.varB=finish(ramp(p,base,CU_RED));r.varW=sm(.38,.72,atm)}
+    if(atm>.5)col=mix(col,[112,52,40],.22*cool*sm(.38,.72,atm));
+  }
+  r.col=finish(col);
+  r.tr=B.tr*Math.pow(melt,1.5)*(1-.3*cool)*(1+.08*(1-cool));
+  r.gloss=B.gloss*melt*melt*(1-.28*cool*(B.key==='clear'?.6:1))*(1-.35*r.crystal)*(1+.15*over);
+  r.run=clamp(B.run*(.15+over*1.3+clamp((T-B.mat)/160))*(.6+.7*s.thick),0,2);
+  return r;
+}
+const atmWord=a=>a<.3?'酸化':a<.6?'中性':'還元';
+const coolRate=c=>Math.round(lerp(300,40,c));
+function nameOf(s,r,atm=s.atm){
+  const p=s.col==='cu'?s.amt*(1-.55*r.over):s.amt,a=atm;
+  switch(s.col){
+    case 'fe':{const tm=()=>r.streak>.3?['禾目天目','のぎめてんもく']:r.crystal>.25?['油滴天目','ゆてきてんもく']:['天目','てんもく'];
+      if(a<.35)return p<1?['淡黄釉','たんおうゆう']:p<3.5?['黄瀬戸','きせと']:p<6.5?['飴釉','あめゆう']:r.crystal>.25?['柿天目','かきてんもく']:['黒釉','こくゆう'];
+      if(a>.65)return p<.9?['影青','いんちん']:p<2.6?['青磁','せいじ']:p<5?['蕎麦釉','そばゆう']:tm();
+      return p<3?['米色青磁','べいしょくせいじ']:p<6?['鉄釉','てつゆう']:tm();}
+    case 'cu':if(a<.38)return p<.8?['青織部','あおおりべ']:['織部','おりべ'];
+      if(a>.72)return p<.4?['桃花紅','とうかこう']:p<2.5?['辰砂','しんしゃ']:['牛血紅','ぎゅうけつこう'];
+      return ['窯変辰砂','ようへんしんしゃ'];
+    case 'co':return p<.4?['薄瑠璃','うするり']:['瑠璃釉','るりゆう'];
+    case 'cr':return s.base==='matte'?['茶褐釉','ちゃかつゆう']:['クロム緑釉','くろむりょくゆう'];
+    case 'crsn':return a<.4?(p<.1?['桜色釉','さくらいろゆう']:['クロム錫ピンク','くろむすずぴんく']):['灰緑釉','かいりょくゆう'];
+    default:if(s.base==='ash')return a>.5?['青灰釉','せいかいゆう']:['黄灰釉','きばいゆう'];
+      if(s.base==='feld')return s.clay==='porcelain'?['乳白釉','にゅうはくゆう']:['志野','しの'];
+      if(s.base==='matte')return ['マット白釉','まっとしろゆう'];
+      return ['透明釉','とうめいゆう'];
+  }
+}
+function tagsOf(s,r){
+  const t=[];
+  if(r.melt<.55)t.push(['焼き不足・ザラつき','warn']);else if(r.melt<.95)t.push(['溶けかけ','warn']);
+  if(r.over>.35)t.push(['釉が流れる','warn']);
+  if(s.col==='cu'&&r.over>.3)t.push(['銅が揮発し色抜け','warn']);
+  if(r.crystal>.2)t.push([s.atm>.5?'油滴結晶':'鉄の結晶（柿）','good']);
+  if(r.streak>.3)t.push(['禾目（筋状の結晶）','good']);
+  if(r.varieg>.3)t.push(['紅緑の斑・窯変','good']);
+  return t;
+}
+function notesOf(s,r){
+  const B=BASES[s.base],C=CLAYS[s.clay],p=+s.amt,a=s.atm,k=s.col,w=atmWord(a);
+  let comp;
+  switch(k){
+    case 'fe':comp=`鉄 ${p}%。量と雰囲気で黄・茶・黒・青緑まで変わる、最も多彩な発色剤。${p<2?'少量なので淡い色に。':p<6?'中量で色がはっきり出る。':'多量なので黒に近づき、結晶も出やすい。'}`;break;
+    case 'cu':comp=`銅 ${p}%。酸化なら緑、還元なら赤。辰砂の赤は0.5〜1%のごく少量で出る。`;break;
+    case 'co':comp=`コバルト ${p}%。雰囲気に左右されにくく、少量でも強く青に発色する。`;break;
+    case 'cr':comp=`クロム ${p}%。主に緑。${s.base==='matte'?'亜鉛を含むマット釉ではクロムが茶色に転ぶ。':''}`;break;
+    case 'crsn':comp=`クロム ${p}%＋スズ 5%。酸化でピンク〜えんじに発色する。`;break;
+    default:comp='発色剤なし。基礎釉そのものの色になる。';
+  }
+  comp+=` 基礎釉は${B.label}で、${B.desc}。`;
+  const t={
+    fe:{酸化:'酸素が十分で鉄は3価のまま。黄〜茶に発色する。',中性:'酸化と還元の中間。黄みと青みが混ざった中間色に。',還元:'鉄が2価に還元され、少量なら青緑（青磁）、多いと黒に。'},
+    cu:{酸化:'銅イオンが緑に発色する（織部）。',中性:'還元が中途半端で、赤と緑が斑に出る。',還元:'銅が金属コロイドまで還元され、光を散乱して赤に。'},
+    co:{酸化:'どの雰囲気でもほぼ同じ青。',中性:'どの雰囲気でもほぼ同じ青。',還元:'青はそのまま。還元でわずかに紫みが増す。'},
+    cr:{酸化:'安定した緑。',中性:'やや沈んだ緑に。',還元:'還元でくすんだオリーブ緑になる。'},
+    crsn:{酸化:'ピンクは酸化でしか出ない。',中性:'還元気味になるとピンクが弱まる。',還元:'還元ではピンクが消え、灰緑になる。'},
+    none:{酸化:'発色剤がないので変化は小さめ。灰釉なら黄みが出る。',中性:'発色剤がないので変化は小さめ。',還元:'釉や土の微量の鉄が還元され、うっすら青みを帯びる。'}
+  };
+  const at=`${w}焼成。`+t[k][w];
+  let tp;
+  if(r.melt<.55)tp=`${s.temp}℃は熟成温度（約${B.mat}℃）に届かず、釉が溶けきらない。白っぽくザラつき、発色も弱い。`;
+  else if(r.melt<.95)tp=`${s.temp}℃は熟成温度（約${B.mat}℃）の少し手前。ツヤと発色がまだ不十分。`;
+  else if(r.over>.3)tp=`熟成温度（約${B.mat}℃）を${s.temp-B.mat}℃上回り、釉が流れ落ちやすい。${k==='cu'?'銅が揮発して色が薄くなる。':'裾に釉がたまり、口縁は薄くなる。'}`;
+  else tp=`${s.temp}℃は熟成温度（約${B.mat}℃）の範囲。釉がよく溶けて本来の色に。`;
+  let cl=s.cool<.35?'急冷。結晶ができず、透明感のある鮮やかな色に。':s.cool>.65?'徐冷。釉の中で結晶が育ち、不透明・半ツヤに寄る。':'中くらいの冷却。結晶はわずか。';
+  if(r.crystal>.2)cl+=a>.5?' 鉄の結晶が銀色の斑点（油滴）として浮かぶ。':' 表面に鉄が赤錆色に析出する（柿天目・鉄赤）。';
+  if(r.streak>.3)cl+=' 釉が流れながら結晶が育ち、筋状の禾目に。';
+  const cy=s.clay==='porcelain'?'白い磁器土なので、釉の色がそのままクリアに出る。':`${C.label}の鉄分が釉に溶け出し、薄い所から透けて暗く渋い色に。${a>.5?'還元で土も灰〜黒っぽく焼き締まる。':''}`;
+  return [['成分',comp],['雰囲気',at],['温度',tp],['冷却',cl],['素地',cy]];
+}
+function finishScore(r){
+  const v=r.melt*(1-.55*r.over)*(.82+.18*Math.max(r.gloss,.4));
+  return Math.round(clamp(v)*100);
+}
+
+/* ================= noise ================= */
+function hash(x,y,s){let h=Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(s,1442695041)|0;h=Math.imul(h^(h>>>13),1274126177);return ((h^(h>>>16))>>>0)/4294967295}
+function vnp(x,y,s,P){ // value noise, periodic in x with period P cells (P=0: not periodic)
+  const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
+  const x0=P?((xi%P)+P)%P:xi,x1=P?(x0+1)%P:xi+1;
+  const a=hash(x0,yi,s),b=hash(x1,yi,s),c=hash(x0,yi+1,s),d=hash(x1,yi+1,s);
+  return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;
+}
+function glazeColorN(r,t,a1,a2,a3,aS,a4,clay){
+  let g=r.col;
+  if(r.varieg>0){const k=clamp((a1-(1-r.varW))*5+.5);g=mix(g,mix(r.varA,r.varB,k),r.varieg)}
+  g=mix(g,r.thinCol,clamp((.6-t)/.5)*.9);
+  const dk=clamp((t-1)/.8)*.3;g=[g[0]*(1-dk),g[1]*(1-dk),g[2]*(1-dk)];
+  if(r.crystal>0){const thr=1-r.crystal*.33;if(a3>thr)g=mix(g,r.crystalCol,clamp((a3-thr)*14))}
+  if(r.streak>0)g=mix(g,r.streakCol,r.streak*clamp((aS-.5)*3.2)*clamp(t));
+  const vis=clamp(r.tr*(1.05-.4*t)+(1-t*4)*.9);
+  g=mix(g,mul(g,clay||r.clay),vis*.92);
+  const gr=(a4-.5)*70*(1-r.melt)+(a2-.5)*10;
+  return [g[0]+gr,g[1]+gr,g[2]+gr];
+}
+function clayColorN(r,s,a1,a3,a4){
+  let c=r.clay;
+  if((s.clay==='stoneware'||s.clay==='red')&&r.atm<.5)c=mix(c,[206,120,70],.35*(1-r.atm*2)*clamp((a1-.5)*3));
+  if(s.clay!=='porcelain'&&r.atm>.5&&a3>.8)c=mix(c,[40,32,28],.6);
+  const gr=(a4-.5)*26;return [c[0]+gr,c[1]+gr,c[2]+gr];
+}
+
+/* ================= state ================= */
+const VESSELS={
+  chawan:{label:'茶碗',elev:.26,foot:{r:4.0,h:.9},body:[[1.0,4.6],[2.2,5.6],[3.8,6.4],[5.6,6.85],[7.4,6.95]],wall:.45,floorH:1.5,gl:2.4,drip:1.4,pool:.42},
+  sara:{label:'平皿',elev:.62,foot:{r:5.6,h:.5},body:[[.6,6.4],[1.1,8.2],[1.7,9.4],[2.3,10]],wall:.4,floorH:.95,gl:.95,drip:.45,pool:.55},
+  yunomi:{label:'湯呑',elev:.2,foot:{r:2.8,h:.7},body:[[.8,3.2],[1.6,3.45],[4,3.55],[7,3.62],[9,3.72]],wall:.4,floorH:1.3,gl:2.2,drip:1.6,pool:.6},
+  hanaire:{label:'花入',elev:.18,foot:{r:3.2,h:.6},body:[[.7,3.8],[2,4.7],[4,5.25],[6,5.3],[8,4.8],[10,3.2],[11.5,1.8],[12.5,1.5],[13.6,1.7],[14,1.95]],wall:.4,floorH:1.2,gl:3.2,drip:2.2,pool:.5},
+};
+const state={vessel:'chawan',col:'cu',amt:.8,base:'clear',atm:.85,temp:1250,cool:.15,clay:'porcelain',thick:.7};
+const KEYS=Object.keys(state);
+const pick=o=>{const x={};KEYS.forEach(k=>{if(o&&o[k]!==undefined)x[k]=o[k]});return x};
+
+/* ================= page background (plaster) ================= */
+(()=>{const c=document.createElement('canvas');c.width=c.height=512;const x=c.getContext('2d');x.fillStyle='#94948F';x.fillRect(0,0,512,512);
+  const id=x.getImageData(0,0,512,512),d=id.data;
+  for(let py=0;py<512;py++)for(let px=0;px<512;px++){const o=(py*512+px)*4;let n=(hash(px,py,3)-.5)*14+(vnp(px/64,py/64,5,8)-.5)*14;const h=hash(px,py,9);if(h<.004)n-=24;else if(h>.997)n+=16;d[o]+=n;d[o+1]+=n;d[o+2]+=n*.95}
+  x.putImageData(id,0,0);
+  document.body.style.backgroundImage=`linear-gradient(90deg,rgba(255,255,250,.16),rgba(0,0,0,.2)),url(${c.toDataURL()})`;})();
+
+/* ================= 3D ================= */
+const stage=$('stage');
+let gl3=null;
+const TW=1024,TH=512;
+const PROF={},FIELDS={};
+function catmull(p0,p1,p2,p3,t){const t2=t*t,t3=t2*t;return [0,1].map(i=>.5*((2*p1[i])+(-p0[i]+p2[i])*t+(2*p0[i]-5*p1[i]+4*p2[i]-p3[i])*t2+(-p0[i]+3*p1[i]-3*p2[i]+p3[i])*t3))}
+function makeProfile(key){
+  if(PROF[key])return PROF[key];
+  const V=VESSELS[key],B=V.body,pts=[],add=(r,h,type)=>pts.push({r,h,type});
+  const fr=V.foot.r,fh=V.foot.h;
+  add(.001,.32,'under');add(fr-.5,.32,'under');add(fr-.38,0,'foot');add(fr,0,'foot');add(fr,fh,'foot');
+  const outer=[];
+  for(let i=0;i<B.length-1;i++){const p0=B[Math.max(0,i-1)],p1=B[i],p2=B[i+1],p3=B[Math.min(B.length-1,i+2)];
+    for(let k=0;k<10;k++){const q=catmull(p0,p1,p2,p3,k/10);outer.push({h:q[0],r:q[1]})}}
+  outer.push({h:B[B.length-1][0],r:B[B.length-1][1]});
+  outer.forEach(o=>add(o.r,o.h,'outer'));
+  const rimR=B[B.length-1][1],rimH=B[B.length-1][0],w=V.wall;
+  add(rimR-w*.15,rimH+w*.25,'rim');add(rimR-w*.5,rimH+w*.36,'rim');add(rimR-w*.85,rimH+w*.25,'rim');add(rimR-w,rimH,'rim');
+  const outerR=h=>{for(let i=1;i<outer.length;i++)if(h<=outer[i].h){const a=outer[i-1],b=outer[i];return lerp(a.r,b.r,(h-a.h)/(b.h-a.h||1))}return rimR};
+  for(let i=outer.length-2;i>=0;i--){const o=outer[i];if(o.h<=V.floorH+.35)break;add(Math.max(.06,o.r-w),o.h,'inner')}
+  const fR=Math.max(.06,outerR(V.floorH+.35)-w);
+  add(fR*.96,V.floorH+.12,'inner');
+  for(let k=1;k<=10;k++)add(Math.max(.001,fR*(1-k/10)*.92),V.floorH,'floor');
+  // resample by arc length
+  const L=[0];for(let i=1;i<pts.length;i++)L.push(L[i-1]+Math.hypot(pts[i].r-pts[i-1].r,pts[i].h-pts[i-1].h));
+  const total=L[L.length-1],N=220,res=[];let j=1;
+  for(let k=0;k<N;k++){const s=total*k/(N-1);while(j<pts.length-1&&L[j]<s)j++;const a=pts[j-1],b=pts[j],t=clamp((s-L[j-1])/(L[j]-L[j-1]||1));
+    res.push({r:lerp(a.r,b.r,t),h:lerp(a.h,b.h,t),type:t<.5?a.type:b.type,s})}
+  return PROF[key]={pts:res,total,rimR,rimH};
+}
+function makeFields(key){
+  if(FIELDS[key])return FIELDS[key];
+  const P=makeProfile(key),Cref=2*Math.PI*Math.max(...P.pts.map(p=>p.r)),n=TW*TH;
+  const f={n1:new Float32Array(n),n2:new Float32Array(n),n3:new Float32Array(n),nS:new Float32Array(n),n4:new Float32Array(n),wave:new Float32Array(TW),drip:new Float32Array(TW),rows:[]};
+  const per=c=>Math.max(1,Math.round(Cref/c));
+  const P1=per(2.4),P1b=per(.95),P2=per(.55),P3=per(.16),P3b=per(.08),PS=per(.11),PSb=per(.25),PW=per(1.4),PD=per(.4);
+  for(let y=0;y<TH;y++){
+    const fj=(1-(y+.5)/TH)*(P.pts.length-1),j0=Math.floor(fj),j1=Math.min(P.pts.length-1,j0+1),t=fj-j0,a=P.pts[j0],b=P.pts[j1];
+    const row={r:lerp(a.r,b.r,t),h:lerp(a.h,b.h,t),type:t<.5?a.type:b.type,s:lerp(a.s,b.s,t)};f.rows.push(row);
+    const ys=row.s,flat=row.type==='floor'||(row.type==='inner'&&row.r<1.6);
+    for(let x=0;x<TW;x++){const u=(x+.5)/TW,i=y*TW+x;
+      if(flat){const cx=row.r*Math.cos(u*6.2832)+50,cy=row.r*Math.sin(u*6.2832)+50;
+        f.n1[i]=.65*vnp(cx/2.4,cy/2.4,1,0)+.35*vnp(cx/.95,cy/.95,2,0);f.n2[i]=vnp(cx/.55,cy/.55,3,0);
+        f.n3[i]=.7*vnp(cx/.16,cy/.16,4,0)+.3*vnp(cx/.08,cy/.08,11,0);f.nS[i]=.7*vnp(cx/.4,cy/.4,5,0)+.3*vnp(cx/.9,cy/.9,6,0);
+      }else{
+      f.n1[i]=.65*vnp(u*P1,ys/2.4,1,P1)+.35*vnp(u*P1b,ys/.95,2,P1b);
+      f.n2[i]=vnp(u*P2,ys/.55,3,P2);
+      f.n3[i]=.7*vnp(u*P3,ys/.16,4,P3)+.3*vnp(u*P3b,ys/.08,11,P3b);
+      f.nS[i]=.7*vnp(u*PS,ys/1.6,5,PS)+.3*vnp(u*PSb,ys/3.6,6,PSb);}
+      f.n4[i]=hash(x,y,7);
+    }}
+  for(let x=0;x<TW;x++){const u=(x+.5)/TW;f.wave[x]=vnp(u*PW,3.3,9,PW)-.5;f.drip[x]=clamp((vnp(u*PD,1.7,8,PD)-.52)/.48)}
+  return FIELDS[key]=f;
+}
+const texCanvas=document.createElement('canvas');texCanvas.width=TW;texCanvas.height=TH;
+const rouCanvas=document.createElement('canvas');rouCanvas.width=TW;rouCanvas.height=TH;
+const texCtx=texCanvas.getContext('2d'),rouCtx=rouCanvas.getContext('2d');
+const texImg=texCtx.createImageData(TW,TH),rouImg=rouCtx.createImageData(TW,TH);
+function paintTexture(s,r){
+  const V=VESSELS[s.vessel],P=makeProfile(s.vessel),F=makeFields(s.vessel);
+  const d=texImg.data,q=rouImg.data,tm=.55+.9*s.thick,run=r.run,rimH=P.rimH,span=Math.max(.5,rimH-V.gl),rimR=P.rimR;
+  const gloss=r.gloss;
+  for(let y=0;y<TH;y++){const a=F.rows[y];
+    for(let x=0;x<TW;x++){const i=y*TW+x,o=i*4;let glazed=false,t=0;
+      switch(a.type){
+        case 'outer':{const gl=V.gl+F.wave[x]*.7*Math.min(1,span/2),edge=gl-run*V.drip*F.drip[x];
+          if(a.h>edge){glazed=true;const dR=rimH-a.h,f=clamp(dR/span);t=.45+.55*f+run*(f-.5)*.6;t=Math.min(t,.12+dR/.35);if(a.h<gl)t=1.15;const te=a.h-edge;if(te<.18)t+=.35*(1-te/.18)}break}
+        case 'rim':glazed=true;t=.1;break;
+        case 'inner':{glazed=true;const dd=rimH-a.h;t=Math.min(.55+.25*clamp(dd/3),.08+dd/.3);break}
+        case 'floor':{glazed=true;const qq=a.r/(rimR*V.pool);t=.55+(.4+run*.8)*Math.exp(-qq*qq*1.2);break}
+      }
+      let c,ro;
+      if(glazed){t=t*tm+(F.n2[i]-.5)*.3;c=glazeColorN(r,t,F.n1[i],F.n2[i],F.n3[i],F.nS[i],F.n4[i]);
+        ro=clamp(1-gloss*.93+(F.n2[i]-.5)*.06+(1-r.melt)*.25,.04,1);
+        if(r.crystal>0&&F.n3[i]>1-r.crystal*.33)ro=Math.min(1,ro+.15)}
+      else{c=clayColorN(r,s,F.n1[i],F.n3[i],F.n4[i]);ro=.92}
+      d[o]=clamp(c[0],0,255);d[o+1]=clamp(c[1],0,255);d[o+2]=clamp(c[2],0,255);d[o+3]=255;
+      const rv=ro*255;q[o]=rv;q[o+1]=rv;q[o+2]=rv;q[o+3]=255;
+    }}
+  texCtx.putImageData(texImg,0,0);rouCtx.putImageData(rouImg,0,0);
+}
+function canvasTex(w,h,draw){const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),w,h);return c}
+function woodCanvas(){return canvasTex(2048,1024,(x,W,H)=>{
+  let g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'#8a8174');g.addColorStop(1,'#958b7d');x.fillStyle=g;x.fillRect(0,0,W,H);
+  let sd=5;const rnd=()=>{sd=(sd*16807)%2147483647;return sd/2147483647};
+  const ph=H/4;
+  for(let p=0;p<4;p++){const y0=p*ph,tone=(rnd()-.5)*18;x.fillStyle=`rgba(${tone>0?255:0},${tone>0?245:0},${tone>0?230:0},${Math.abs(tone)/255})`;x.fillRect(0,y0,W,ph);
+    for(let k=0;k<90;k++){const gy=y0+rnd()*ph,amp=1+rnd()*6,wl=80+rnd()*400,phs=rnd()*6;x.beginPath();for(let gx=0;gx<=W;gx+=8){const yy=gy+Math.sin(gx/wl+phs)*amp;gx?x.lineTo(gx,yy):x.moveTo(gx,yy)}
+      x.strokeStyle=rnd()<.55?`rgba(60,48,36,${.05+rnd()*.09})`:`rgba(255,248,236,${.04+rnd()*.07})`;x.lineWidth=.6+rnd()*2.2;x.stroke()}
+    if(rnd()<.8){const kx=rnd()*W,ky=y0+ph*(.3+rnd()*.4);x.strokeStyle='rgba(60,48,38,.22)';for(let r=3;r<26;r+=5){x.beginPath();x.ellipse(kx,ky,r*2.4,r*.8,0,0,7);x.stroke()}}
+    x.fillStyle='rgba(40,32,26,.45)';x.fillRect(0,y0,W,3);x.fillStyle='rgba(255,248,236,.12)';x.fillRect(0,y0+3,W,1.5)}
+  x.save();x.filter='blur(10px)';for(let i=0;i<22;i++){x.fillStyle=`rgba(218,212,200,${.12+rnd()*.14})`;x.beginPath();x.ellipse(rnd()*W,rnd()*H,40+rnd()*160,8+rnd()*26,0,0,7);x.fill()}x.restore();
+  for(let i=0;i<1400;i++){x.fillStyle=rnd()<.8?`rgba(214,208,196,${.2+rnd()*.35})`:`rgba(70,60,50,${.2+rnd()*.3})`;x.beginPath();x.arc(rnd()*W,rnd()*H,.5+rnd()*1.3,0,7);x.fill()}
+})}
+function plasterCanvas(){return canvasTex(1024,512,(x,W,H)=>{
+  const g=x.createLinearGradient(0,0,W,0);g.addColorStop(0,'#a6a6a1');g.addColorStop(.5,'#9a9a95');g.addColorStop(1,'#8a8a85');x.fillStyle=g;x.fillRect(0,0,W,H);
+  const id=x.getImageData(0,0,W,H),d=id.data;
+  for(let py=0;py<H;py++)for(let px=0;px<W;px++){const o=(py*W+px)*4;let n=(hash(px,py,21)-.5)*12+(vnp(px/48,py/48,22,0)-.5)*16;const h=hash(px,py,23);if(h<.004)n-=22;d[o]+=n;d[o+1]+=n;d[o+2]+=n*.95}
+  x.putImageData(id,0,0)})}
+function wheelTopCanvas(){return canvasTex(512,512,(x,W,H)=>{
+  const g=x.createRadialGradient(W/2,H/2,0,W/2,H/2,W/2);g.addColorStop(0,'#b9b7b0');g.addColorStop(1,'#a3a19a');x.fillStyle=g;x.fillRect(0,0,W,H);
+  x.strokeStyle='rgba(60,58,52,.28)';x.lineWidth=1.4;[200,150,100,50].forEach(r=>{x.beginPath();x.arc(W/2,H/2,r,0,7);x.stroke()});
+  for(let a=0;a<360;a+=1.5){x.strokeStyle=`rgba(255,255,255,${hash(a*10,1,3)*.06})`;x.beginPath();x.arc(W/2,H/2,20+hash(a*10,2,3)*230,a/57.3,a/57.3+.3);x.stroke()}
+  x.save();x.filter='blur(5px)';x.fillStyle='rgba(214,208,196,.5)';x.beginPath();x.ellipse(W*.32,H*.62,46,16,.6,0,7);x.fill();x.restore()})}
+function envCanvas(){return canvasTex(512,256,(x,W,H)=>{
+  let g=x.createLinearGradient(0,0,0,H);g.addColorStop(0,'#c9c8c2');g.addColorStop(.48,'#9b9a95');g.addColorStop(.52,'#7d756b');g.addColorStop(1,'#4a453f');x.fillStyle=g;x.fillRect(0,0,W,H);
+  x.filter='blur(14px)';x.fillStyle='#ffffff';x.fillRect(W*.2,H*.12,W*.16,H*.22);x.fillStyle='rgba(255,252,244,.7)';x.fillRect(W*.64,H*.18,W*.1,H*.16);x.filter='none'})}
+
+function init3D(){
+  if(!window.THREE)return null;
+  let renderer;
+  try{renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:false});}catch(e){return null}
+  renderer.setPixelRatio(Math.min(2,window.devicePixelRatio||1));
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=.76;
+  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  stage.prepend(renderer.domElement);
+  const scene=new THREE.Scene();scene.background=new THREE.Color(0x8f8e88);
+  const pm=new THREE.PMREMGenerator(renderer);const et=new THREE.CanvasTexture(envCanvas());et.mapping=THREE.EquirectangularReflectionMapping;et.encoding=THREE.sRGBEncoding;
+  scene.environment=pm.fromEquirectangular(et).texture;
+  const camera=new THREE.PerspectiveCamera(26,1,.5,400);
+  scene.add(new THREE.HemisphereLight(0xf2f0ea,0x6b6257,.3));
+  const key=new THREE.DirectionalLight(0xfffaf2,1.0);key.position.set(-16,30,22);key.castShadow=true;
+  key.shadow.mapSize.set(2048,2048);Object.assign(key.shadow.camera,{left:-20,right:20,top:20,bottom:-20,near:5,far:90});key.shadow.bias=-.0004;key.shadow.radius=4;
+  scene.add(key);const fill=new THREE.DirectionalLight(0xdfe8ee,.25);fill.position.set(18,10,10);scene.add(fill);
+  // room
+  const woodT=new THREE.CanvasTexture(woodCanvas());woodT.encoding=THREE.sRGBEncoding;woodT.anisotropy=8;
+  const bench=new THREE.Mesh(new THREE.PlaneGeometry(160,80),new THREE.MeshStandardMaterial({map:woodT,roughness:.82}));
+  bench.rotation.x=-Math.PI/2;bench.position.set(0,0,10);bench.receiveShadow=true;scene.add(bench);
+  const wallT=new THREE.CanvasTexture(plasterCanvas());wallT.encoding=THREE.sRGBEncoding;
+  const wall=new THREE.Mesh(new THREE.PlaneGeometry(160,80),new THREE.MeshStandardMaterial({map:wallT,roughness:.95}));
+  wall.position.set(0,40,-30);wall.receiveShadow=true;scene.add(wall);
+  // banding wheel
+  const metal=new THREE.MeshStandardMaterial({color:0x9b9a94,metalness:.85,roughness:.36});
+  const topT=new THREE.CanvasTexture(wheelTopCanvas());topT.encoding=THREE.sRGBEncoding;
+  const headTop=new THREE.MeshStandardMaterial({map:topT,metalness:.7,roughness:.42});
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(4.6,5,.32,64),metal);base.position.y=.16;
+  const col=new THREE.Mesh(new THREE.CylinderGeometry(.9,.9,.9,32),metal);col.position.y=.32+.45;
+  const spin=new THREE.Group();spin.position.y=1.22;
+  const head=new THREE.Mesh(new THREE.CylinderGeometry(8,8,.36,96),[metal,headTop,metal]);head.position.y=.18;
+  [base,col,head].forEach(m=>{m.castShadow=true;m.receiveShadow=true});
+  spin.add(head);scene.add(base,col,spin);
+  const glazeT=new THREE.CanvasTexture(texCanvas);glazeT.encoding=THREE.sRGBEncoding;glazeT.anisotropy=8;
+  const rouT=new THREE.CanvasTexture(rouCanvas);
+  const mat=new THREE.MeshStandardMaterial({map:glazeT,roughnessMap:rouT,roughness:1,metalness:0,envMapIntensity:.85});
+  let vessel=null;
+  const view={yaw:-.35,elev:.26,zoom:1,auto:!reduceMotion,vel:0,dirty:true};
+  function setVessel(k){
+    const P=makeProfile(k);
+    if(vessel){spin.remove(vessel);vessel.geometry.dispose()}
+    const geo=new THREE.LatheGeometry(P.pts.map(p=>new THREE.Vector2(p.r,p.h)),160);
+    vessel=new THREE.Mesh(geo,mat);vessel.position.y=.36;vessel.castShadow=true;vessel.receiveShadow=true;spin.add(vessel);
+    view.fit={h:P.rimH,r:P.rimR};view.home=VESSELS[k].elev;view.elev=view.home;view.dirty=true;
+  }
+  function placeCam(){
+    const w=stage.clientWidth,h=stage.clientHeight;
+    const H=view.fit.h+1.6,top=1.58+view.fit.h,ty=(1.2+top)*.5,fov=camera.fov*Math.PI/180;
+    const dh=(H*1.45)/(2*Math.tan(fov/2)),dw=(2*Math.max(8.5,view.fit.r)*1.32)/(2*Math.tan(fov/2)*(w/h));
+    const dist=Math.max(dh,dw,18)/view.zoom;
+    camera.aspect=w/h;camera.position.set(0,ty+Math.sin(view.elev)*dist,Math.cos(view.elev)*dist);camera.lookAt(0,ty,0);camera.updateProjectionMatrix();
+  }
+  function resize(){const w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);view.dirty=true}
+  new ResizeObserver(resize).observe(stage);resize();
+  // interaction
+  let drag=null;
+  stage.addEventListener('pointerdown',e=>{if(e.target.closest('.sui'))return;drag={x:e.clientX,y:e.clientY,t:performance.now()};stage.setPointerCapture(e.pointerId);stage.classList.add('drag');view.vel=0});
+  stage.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y,dt=Math.max(1,performance.now()-drag.t);
+    view.yaw+=dx*.009;view.elev=clamp(view.elev+dy*.004,.08,.75);view.vel=dx*.009/dt*16;drag={x:e.clientX,y:e.clientY,t:performance.now()};view.dirty=true});
+  const end=()=>{if(!drag)return;drag=null;stage.classList.remove('drag')};
+  stage.addEventListener('pointerup',end);stage.addEventListener('pointercancel',end);
+  stage.addEventListener('wheel',e=>{if(!e.ctrlKey)return;e.preventDefault();view.zoom=clamp(view.zoom*(1-e.deltaY*.004),.75,1.8);view.dirty=true},{passive:false});
+  stage.addEventListener('dblclick',()=>{view.yaw=-.35;view.elev=view.home;view.zoom=1;view.dirty=true});
+  $('zoomIn').onclick=()=>{view.zoom=clamp(view.zoom*1.15,.75,1.8);view.dirty=true};
+  $('zoomOut').onclick=()=>{view.zoom=clamp(view.zoom/1.15,.75,1.8);view.dirty=true};
+  $('resetView').onclick=()=>{view.yaw=-.35;view.elev=view.home;view.zoom=1;view.vel=0;view.dirty=true};
+  const ab=$('autoBtn');ab.setAttribute('aria-pressed',String(view.auto));
+  ab.onclick=()=>{view.auto=!view.auto;ab.setAttribute('aria-pressed',String(view.auto))};
+  // hotspots
+  const hots=$('hots');
+  const spots=[{k:'rim',cls:''},{k:'body',cls:'l main'},{k:'foot',cls:''}].map(sp=>{const el=document.createElement('div');el.className='hs '+sp.cls;el.innerHTML='<i></i><span></span>';hots.append(el);return {...sp,el,span:el.querySelector('span')}});
+  const v3=new THREE.Vector3();
+  function spotPos(k){const P=makeProfile(state.vessel),V=VESSELS[state.vessel],B=V.body,y0=1.22+.36+.0;
+    const camAng=0; // front of camera is +z
+    if(k==='rim'){const a=.62;return [Math.sin(a)*P.rimR,y0+P.rimH,Math.cos(a)*P.rimR]}
+    if(k==='foot'){const a=.35;return [Math.sin(a)*V.foot.r,y0+V.foot.h*.5,Math.cos(a)*V.foot.r]}
+    if(state.vessel==='sara'){const a=-.5,rr=P.rimR*.42;return [Math.sin(a)*rr,y0+V.floorH+.05,Math.cos(a)*rr]}
+    const h=(V.gl+P.rimH)/2;let r=B[0][1];for(let i=1;i<B.length;i++)if(h<=B[i][0]){r=lerp(B[i-1][1],B[i][1],(h-B[i-1][0])/(B[i][0]-B[i-1][0]));break}
+    const a=-.42;return [Math.sin(a)*r,y0+h,Math.cos(a)*r];}
+  function updateSpots(){const w=stage.clientWidth,h=stage.clientHeight;
+    spots.forEach(sp=>{if(sp.k==='foot'&&state.vessel==='sara'){sp.el.hidden=true;return}
+      const p=spotPos(sp.k);v3.set(p[0],p[1],p[2]).project(camera);const x=(v3.x*.5+.5)*w,y=(-v3.y*.5+.5)*h;
+      const lw=(sp.span.offsetWidth||140)+24,left=sp.cls.includes('l')?x-lw>8:x+lw>w-8;
+      sp.el.classList.toggle('l',left);
+      sp.el.style.transform=`translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`+(left?' translateX(-100%)':'');
+      sp.el.hidden=x<0||x>w||y<0||y>h})}
+  let last=performance.now();
+  function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;
+    if(!drag){if(Math.abs(view.vel)>.0004){view.yaw+=view.vel;view.vel*=.92;view.dirty=true}else view.vel=0;
+      if(view.auto&&!reduceMotion){view.yaw+=dt*.32;view.dirty=true}}
+    if(view.dirty&&view.fit){spin.rotation.y=view.yaw;placeCam();renderer.render(scene,camera);updateSpots();view.dirty=false}
+    requestAnimationFrame(loop)}
+  requestAnimationFrame(loop);
+  return {setVessel,refresh(){glazeT.needsUpdate=true;rouT.needsUpdate=true;view.dirty=true},spots,
+    setLabels(arr){spots.forEach((sp,i)=>sp.span.textContent=arr[i]);view.dirty=true}};
+}
+try{gl3=init3D()}catch(e){gl3=null}
+if(!gl3){const d=document.createElement('div');d.className='nogl';d.textContent='この環境では3D表示を使えません。WebGLに対応したブラウザで開くと、器を回して見られます。';stage.append(d)}
+
+/* ================= tiles ================= */
+const TS=2,TWt=160,THt=70,TN=TWt*TS*THt*TS;
+const tf={n1:new Float32Array(TN),n2:new Float32Array(TN),n3:new Float32Array(TN),nS:new Float32Array(TN),n4:new Float32Array(TN),wave:new Float32Array(TWt*TS),drip:new Float32Array(TWt*TS)};
+for(let py=0;py<THt*TS;py++)for(let px=0;px<TWt*TS;px++){const x=px/TS+40,y=py/TS+60,i=py*TWt*TS+px;
+  tf.n1[i]=.65*vnp(x/38,y/38,1,0)+.35*vnp(x/15,y/15,2,0);tf.n2[i]=vnp(x/9,y/9,3,0);tf.n3[i]=.7*vnp(x/2.4,y/2.4,4,0)+.3*vnp(x/1.2,y/1.2,11,0);
+  tf.nS[i]=.7*vnp(x/1.6,y/24,5,0)+.3*vnp(x/3.5,y/55,6,0);tf.n4[i]=hash(px,py,7)}
+for(let px=0;px<TWt*TS;px++){const x=px/TS;tf.wave[px]=(vnp(x/22,3.3,9,0)-.5)*10;tf.drip[px]=clamp((vnp(x/6,1.7,8,0)-.52)/.48)}
+const TA=[0,.25,.5,.75,1],TL=['酸化','弱酸化','中性','弱還元','還元'];
+const tiles=TA.map((a,k)=>{const b=document.createElement('button');b.type='button';b.className='tile';const c=document.createElement('canvas');c.width=TWt*TS;c.height=THt*TS;
+  const sp=document.createElement('span');sp.textContent=TL[k];b.append(c,sp);b.setAttribute('aria-label',TL[k]+'に切り替え');b.onclick=()=>{state.atm=a;sync()};$('tiles').append(b);
+  const ctx=c.getContext('2d');return {b,sp,ctx,img:ctx.createImageData(c.width,c.height)}});
+function renderTiles(s){
+  const near=Math.round(s.atm*4);
+  tiles.forEach((tl,k)=>{const r=compute(s,TA[k]),d=tl.img.data,pw=TWt*TS,ph=THt*TS,tm=.55+.9*s.thick;
+    tl.b.classList.toggle('on',k===near);tl.sp.textContent=TL[k]+(k===near?'（現在）':'');
+    for(let py=0;py<ph;py++){const y=py/TS;for(let px=0;px<pw;px++){const x=px/TS,i=py*pw+px,o=i*4;
+      const edge=THt*.8+tf.wave[px],dl=r.run*10*tf.drip[px];let c,shade=1-.1*(y/THt),spec=0;
+      if(y<edge+dl){let t=(.35+.85*(y/THt)+r.run*.3*(y/THt))*tm+(tf.n2[i]-.5)*.3;if(y<2.5)t=Math.min(t,.15);
+        c=glazeColorN(r,t,tf.n1[i],tf.n2[i],tf.n3[i],tf.nS[i],tf.n4[i]);spec=r.gloss*.42*Math.exp(-(((x/TWt)*.5+(y/THt)*.5-.45)**2)/.004)}
+      else{c=clayColorN(r,s,tf.n1[i],tf.n3[i],tf.n4[i]);shade*=.9}
+      d[o]=clamp(c[0]*shade+spec*255,0,255);d[o+1]=clamp(c[1]*shade+spec*255,0,255);d[o+2]=clamp(c[2]*shade+spec*255,0,255);d[o+3]=255}}
+    tl.ctx.putImageData(tl.img,0,0)});
+}
+
+/* ================= firing chart ================= */
+let chartTab='temp';
+function schedule(s){const pts=[[0,20]];let t=0,T=20;const go=(to,rate)=>{t+=Math.abs(to-T)/rate;T=to;pts.push([t,T])};
+  go(600,100);go(s.temp,150);const redStart=pts[1][0]+(1000-600)/150,peakT=t;t+=.5;pts.push([t,T]);const holdEnd=t;
+  go(Math.max(1000,s.temp-100),200);go(800,coolRate(s.cool));go(100,110);return {pts,redStart,holdEnd,peakT,end:t}}
+function drawChart(s){
+  const sc=schedule(s),W=400,H=230,l=46,r=10,tp=12,b=28,iw=W-l-r,ih=H-tp-b,X=v=>l+v/sc.end*iw;
+  const tAt=x=>{const P=sc.pts;for(let i=1;i<P.length;i++)if(x<=P[i][0]){const a=P[i-1],c=P[i];return a[1]+(c[1]-a[1])*(x-a[0])/(c[0]-a[0]||1)}return 100};
+  let series,yMax,yTicks,yFmt;
+  if(chartTab==='temp'){series=sc.pts;yMax=1400;yTicks=[0,400,800,1200];yFmt=v=>v+'℃'}
+  else if(chartTab==='atm'){const a=s.atm;series=[[0,0],[sc.redStart,0],[sc.redStart+.01,a],[sc.holdEnd,a],[sc.holdEnd+.01,0],[sc.end,0]];yMax=1;yTicks=[0,.5,1];yFmt=v=>v===0?'酸化':v===1?'還元':'中性'}
+  else{series=[];for(let i=0;i<=80;i++){const x=sc.end*i/80,dv=(tAt(x+.05)-tAt(Math.max(0,x-.05)))/.1;series.push([x,Math.abs(Math.min(0,dv))])}yMax=320;yTicks=[0,100,200,300];yFmt=v=>v+'℃/h'}
+  const Y=v=>tp+ih-v/yMax*ih;
+  let o=`<defs><linearGradient id="ar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34B7A4" stop-opacity=".55"/><stop offset="1" stop-color="#34B7A4" stop-opacity=".03"/></linearGradient></defs>`;
+  yTicks.forEach(v=>{o+=`<line x1="${l}" x2="${W-r}" y1="${Y(v)}" y2="${Y(v)}" stroke="rgba(255,255,255,.08)"/><text x="${l-8}" y="${Y(v)+4}" text-anchor="end" font-size="10.5" fill="rgba(244,242,238,.62)">${yFmt(v)}</text>`});
+  const step=sc.end>15?3:2;for(let h=0;h<=sc.end;h+=step)o+=`<text x="${X(h)}" y="${H-8}" text-anchor="middle" font-size="10.5" fill="rgba(244,242,238,.62)">${h}h</text>`;
+  if(s.atm>.08)o+=`<rect x="${X(sc.redStart)}" y="${tp}" width="${X(sc.holdEnd)-X(sc.redStart)}" height="${ih}" fill="rgba(255,255,255,.07)"/><text x="${(X(sc.redStart)+X(sc.holdEnd))/2}" y="${tp+ih-6}" text-anchor="middle" font-size="10" fill="rgba(244,242,238,.7)">還元</text>`;
+  if(chartTab==='temp')o+=`<rect x="${l}" y="${Y(1150)}" width="${iw}" height="${Y(900)-Y(1150)}" fill="none" stroke="rgba(255,255,255,.22)" stroke-dasharray="3 4"/><text x="${l+6}" y="${Y(900)-5}" font-size="9.5" fill="rgba(244,242,238,.55)">結晶が育つ温度帯</text>`;
+  const line=series.map((p,i)=>(i?'L':'M')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)).join(' ');
+  o+=`<path d="${line} L${X(sc.end)} ${Y(0)} L${X(0)} ${Y(0)}Z" fill="url(#ar)"/><path d="${line}" stroke="#34B7A4" stroke-width="2" fill="none" stroke-linejoin="round"/>`;
+  if(chartTab==='temp'){const px=X(sc.peakT),py=Y(s.temp),bx=px>W*.55?px-150:px+14;
+    o+=`<circle cx="${px}" cy="${py}" r="9" fill="rgba(52,183,164,.25)"/><circle cx="${px}" cy="${py}" r="4.5" fill="#34B7A4"/>
+    <g transform="translate(${bx},${Y(520)})"><rect width="136" height="62" rx="9" fill="rgba(20,20,18,.75)" stroke="rgba(255,255,255,.14)"/><text x="12" y="20" font-size="12.5" fill="#F4F2EE" font-weight="500">${s.temp}℃ ・ ${sc.peakT.toFixed(1)}h</text><text x="12" y="38" font-size="10.5" fill="rgba(244,242,238,.62)">${atmWord(s.atm)} ${Math.round(s.atm*100)} ・ ねらし30分</text><text x="12" y="53" font-size="10.5" fill="rgba(244,242,238,.62)">冷却 約${coolRate(s.cool)}℃/h ・ 計${sc.end.toFixed(1)}h</text></g>`}
+  $('chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="焼成の推移グラフ">${o}</svg>`;
+}
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{chartTab=b.dataset.tab;document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));drawChart(state)}));
+
+/* ================= nodes ================= */
+const fmtAmt=v=>(+v).toFixed(COLS[state.col].step<.1?2:1)+' %';
+const CTRL={
+  vessel:{label:'器',type:'enum',opts:()=>Object.keys(VESSELS),show:k=>VESSELS[k].label},
+  thick:{label:'掛け厚',type:'num',min:0,max:1,step:.05,show:v=>`${v<.35?'薄':v<.7?'標準':'厚'} ${Math.round(v*100)}`},
+  clay:{label:'素地',type:'enum',opts:()=>Object.keys(CLAYS),show:k=>CLAYS[k].label},
+  base:{label:'基礎釉',type:'enum',opts:()=>Object.keys(BASES),show:k=>BASES[k].label},
+  col:{label:'発色剤',type:'enum',opts:()=>Object.keys(COLS),show:k=>COLS[k].label+(COLS[k].chem?' '+COLS[k].chem.split('+')[0]:''),after:k=>{state.amt=COLS[k].def}},
+  amt:{label:'量',type:'num',min:0,max:()=>COLS[state.col].max,step:()=>COLS[state.col].step,show:fmtAmt,dis:()=>state.col==='none'},
+  atm:{label:'雰囲気',type:'num',min:0,max:1,step:.05,show:v=>`${atmWord(v)} ${Math.round(v*100)}`},
+  temp:{label:'最高温度',type:'num',min:1100,max:1320,step:5,show:v=>`${v} ℃`},
+  cool:{label:'冷却',type:'num',min:0,max:1,step:.05,show:v=>`${v<.35?'急冷':v>.65?'徐冷':'中冷'} ${coolRate(v)}℃/h`},
+};
+const ICON={vessel:'<path d="M1 2h16c0 7-4 11-8 11S1 9 1 2z"/>',clay:'<path d="M2 12h14M4 12c0-5 2-8 5-8s5 3 5 8"/>',base:'<path d="M9 2c2 4 5 6 5 9a5 5 0 0 1-10 0c0-3 3-5 5-9z"/>',col:'<circle cx="9" cy="8" r="5"/><path d="M6 14h6"/>',fire:'<path d="M9 1c1 3 5 5 5 9a5 5 0 0 1-10 0c0-2 1-3 2-4 0 1.5 1 2.5 2 2.5 0-2.5-.5-4.5 1-7.5z"/>'};
+const NODES=[
+  {cap:'器の種類',ic:'vessel',rows:['vessel','thick'],ro:[['口径（参考）',()=>{const P=makeProfile(state.vessel);return `約${Math.round(P.rimR*2)} cm`}],['高さ（参考）',()=>`約${(makeProfile(state.vessel).rimH).toFixed(1)} cm`]]},
+  {cap:'素地（粘土）',ic:'clay',rows:['clay'],ro:[['鉄分',()=>CLAYS[state.clay].ironL],['焼き色',()=>{const c=compute(state).clay;const l=c[0]*.3+c[1]*.59+c[2]*.11;return state.clay==='porcelain'?(state.atm>.5?'青白':'白'):l>170?'淡い黄土':l>110?(c[0]-c[2]>40?'赤茶':'灰褐'):'焦げ茶〜黒'}],['釉への影響',()=>state.clay==='porcelain'?'色がそのまま出る':'暗く渋い色に']]},
+  {cap:'基礎釉',ic:'base',rows:['base'],ro:[['熟成温度',()=>`約${BASES[state.base].mat} ℃`],['透明度',()=>{const t=BASES[state.base].tr;return t>.6?'高い':t>.3?'中くらい':'低い'}],['ツヤ',()=>{const g=BASES[state.base].gloss;return g>.7?'強い':g>.4?'中くらい':'弱い'}]]},
+  {cap:'発色剤（金属酸化物）',ic:'col',rows:['col','amt'],ro:[['酸化だと',()=>{const s2={...state,atm:0};return nameOf(s2,compute(s2),0)[0]}],['還元だと',()=>{const s2={...state,atm:1};return nameOf(s2,compute(s2),1)[0]}]]},
+  {cap:'焼成',ic:'fire',rows:['atm','temp','cool'],ro:[['焼成時間（推定）',()=>`約${schedule(state).end.toFixed(1)} 時間`]]},
+];
+const nodeEls={},roEls=[];
+function stepVal(key,dir){
+  const c=CTRL[key];
+  if(c.type==='enum'){const o=c.opts(),i=o.indexOf(state[key]);state[key]=o[(i+dir+o.length)%o.length];c.after&&c.after(state[key])}
+  else{const mx=typeof c.max==='function'?c.max():c.max,st=typeof c.step==='function'?c.step():c.step;state[key]=+clamp(Math.round((state[key]+dir*st)/st)*st,c.min,mx).toFixed(3)}
+  sync();
+}
+NODES.forEach(n=>{
+  const el=document.createElement('section');el.className='g node';el.setAttribute('aria-label',n.cap);
+  el.innerHTML=`<div class="nh"><span class="nic"><svg width="16" height="15" viewBox="0 0 18 16" fill="none" stroke="currentColor" stroke-width="1.5">${ICON[n.ic]}</svg></span><span class="t" style="font-size:14px">${n.cap}</span></div>
+  <div class="ports"><span><span class="pd" style="margin-left:0"></span>入力</span><span>出力<span class="pd" style="margin-right:0"></span></span></div>`;
+  n.rows.forEach(k=>{const c=CTRL[k],row=document.createElement('div');row.className='nr';
+    row.innerHTML=`<span class="k">${c.label}</span><span class="v"><button class="st" type="button" aria-label="${c.label}を前へ">◀</button><span class="val${c.type==='num'?' drag':''}" tabindex="0" role="${c.type==='num'?'slider':'button'}" aria-label="${c.label}"></span><button class="st" type="button" aria-label="${c.label}を次へ">▶</button></span>`;
+    const [prev,next]=row.querySelectorAll('.st'),val=row.querySelector('.val');
+    prev.onclick=()=>stepVal(k,-1);next.onclick=()=>stepVal(k,1);
+    val.addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key==='ArrowUp'){e.preventDefault();stepVal(k,1)}else if(e.key==='ArrowLeft'||e.key==='ArrowDown'){e.preventDefault();stepVal(k,-1)}else if(c.type==='enum'&&(e.key==='Enter'||e.key===' ')){e.preventDefault();stepVal(k,1)}});
+    if(c.type==='enum')val.addEventListener('click',()=>stepVal(k,1));
+    else{let d=null;val.addEventListener('pointerdown',e=>{d={x:e.clientX,v:state[k]};val.setPointerCapture(e.pointerId)});
+      val.addEventListener('pointermove',e=>{if(!d)return;const mx=typeof c.max==='function'?c.max():c.max,st=typeof c.step==='function'?c.step():c.step;
+        const nv=+clamp(Math.round((d.v+(e.clientX-d.x)/160*(mx-c.min))/st)*st,c.min,mx).toFixed(3);if(nv!==state[k]){state[k]=nv;sync()}});
+      const up=()=>{d=null};val.addEventListener('pointerup',up);val.addEventListener('pointercancel',up)}
+    el.append(row);nodeEls[k]={row,val,prev,next};});
+  n.ro.forEach(([lab,fn])=>{const row=document.createElement('div');row.className='nr ro';row.innerHTML=`<span class="k">${lab}</span><span class="v"></span>`;el.append(row);roEls.push([row.querySelector('.v'),fn])});
+  $('nodes').append(el);
+});
+const PRESETS=[
+  ['辰砂',{col:'cu',amt:.8,base:'clear',atm:.85,temp:1250,cool:.15,clay:'porcelain',thick:.7}],
+  ['織部',{col:'cu',amt:3.5,base:'clear',atm:.05,temp:1240,cool:.3,clay:'stoneware',thick:.6}],
+  ['青磁',{col:'fe',amt:1.5,base:'clear',atm:.85,temp:1260,cool:.2,clay:'porcelain',thick:.85}],
+  ['黄瀬戸',{col:'fe',amt:2.5,base:'ash',atm:.1,temp:1230,cool:.4,clay:'stoneware',thick:.45}],
+  ['油滴天目',{col:'fe',amt:8.5,base:'clear',atm:.75,temp:1270,cool:.9,clay:'black',thick:.8}],
+  ['禾目天目',{col:'fe',amt:8,base:'ash',atm:.65,temp:1290,cool:.8,clay:'black',thick:.8}],
+  ['瑠璃',{col:'co',amt:1.5,base:'clear',atm:.5,temp:1250,cool:.2,clay:'porcelain',thick:.6}],
+  ['桜色',{col:'crsn',amt:.2,base:'feld',atm:.05,temp:1240,cool:.4,clay:'porcelain',thick:.6}],
+  ['志野',{col:'none',amt:0,base:'feld',atm:.15,temp:1270,cool:.6,clay:'stoneware',thick:.75}],
+];
+PRESETS.forEach(([n,p])=>{const b=document.createElement('button');b.type='button';b.textContent=n;b.onclick=()=>{Object.assign(state,p);sync();toast(`「${n}」の調合にしました`)};$('presets').append(b)});
+
+/* ================= random ================= */
+function randomize(){
+  const rp=a=>a[Math.floor(Math.random()*a.length)],R=(a,b)=>a+Math.random()*(b-a);
+  state.vessel=rp(Object.keys(VESSELS));state.base=rp(Object.keys(BASES));state.clay=rp(['porcelain','porcelain','stoneware','stoneware','red','black']);
+  state.col=rp(['fe','fe','cu','cu','co','cr','crsn','none']);const C=COLS[state.col];
+  const amtR={fe:[.8,9.5],cu:[.4,4],co:[.2,2],cr:[.3,2],crsn:[.06,.5],none:[0,0]}[state.col];
+  state.amt=+(Math.round(R(...amtR)/C.step)*C.step).toFixed(2);
+  state.atm=+(Math.round(R(0,1)/.05)*.05).toFixed(2);
+  const mat=BASES[state.base].mat;state.temp=Math.round(clamp(R(mat-35,mat+45),1100,1320)/5)*5;
+  state.cool=+(Math.round(R(0,1)/.05)*.05).toFixed(2);state.thick=+(Math.round(R(.35,.95)/.05)*.05).toFixed(2);
+  sync();const r=compute(state);toast(`ランダムで作成：${nameOf(state,r)[0]}の${VESSELS[state.vessel].label}`);
+}
+$('rndBtn').onclick=randomize;
+
+/* ================= sync ================= */
+let rafTex=0,rafTiles=0,lastVessel=null;
+function sync(){
+  const r=compute(state),[nm,yomi]=nameOf(state,r),C=COLS[state.col],V=VESSELS[state.vessel],tags=tagsOf(state,r);
+  $('rname').textContent=nm;$('ryomi').textContent=yomi;
+  $('rmeta').textContent=`${V.label} ・ ${state.col==='none'?'発色剤なし':C.label+' '+fmtAmt(state.amt).replace(' ','')} ・ ${atmWord(state.atm)} ${state.temp}℃`;
+  $('sGloss').textContent=Math.round(r.gloss*100)+'%';$('sTr').textContent=Math.round(clamp(r.tr/.95)*100)+'%';
+  const warns=tags.filter(t=>t[1]==='warn');$('sWarn').textContent=warns.length?warns.length+'件':'なし';$('sWarnIc').style.color=warns.length?'#E6B05C':'';
+  $('rtags').innerHTML='';tags.forEach(([t,c])=>{const s=document.createElement('span');s.className='tag '+c;s.textContent=t;$('rtags').append(s)});
+  const sc=finishScore(r),Cc=2*Math.PI*52;$('ring').setAttribute('stroke-dasharray',`${Cc*sc/100} ${Cc}`);$('ring').setAttribute('stroke',sc>=60?'#34B7A4':'#E6B05C');
+  $('ringV').textContent=sc+'%';$('ringL').textContent=sc>=85?'良好':sc>=60?'まずまず':'要調整';
+  $('gMelt').textContent=Math.round(r.melt*100)+'%';$('gRun').textContent=Math.round(r.run/2*100)+'%';
+  $('gCry').textContent=Math.round(Math.max(r.crystal,r.streak)*100)+'%';$('gVar').textContent=r.varieg>.3?'あり':'なし';
+  $('why').innerHTML='';notesOf(state,r).forEach(([k,v],i)=>{const li=document.createElement('li');li.innerHTML=`<span class="num">${[1,2,3,3,4][i]}</span><span class="k"></span><span class="v"></span>`;li.children[1].textContent=k;li.children[2].textContent=v;$('why').append(li)});
+  for(const k in nodeEls){const c=CTRL[k],e=nodeEls[k],dis=c.dis&&c.dis();e.val.textContent=dis?'—':c.show(state[k]);e.prev.disabled=e.next.disabled=!!dis;
+    if(c.type==='num'){const mx=typeof c.max==='function'?c.max():c.max;e.val.setAttribute('aria-valuemin',c.min);e.val.setAttribute('aria-valuemax',mx);e.val.setAttribute('aria-valuenow',state[k]);e.val.setAttribute('aria-valuetext',c.show(state[k]))}}
+  roEls.forEach(([el,fn])=>el.textContent=fn());
+  drawChart(state);
+  $('favName').placeholder=defaultName();
+  if(gl3){
+    if(lastVessel!==state.vessel){gl3.setVessel(state.vessel);lastVessel=state.vessel}
+    gl3.setLabels([`口縁：釉が薄く${state.col==='none'?'素地が透ける':'色が淡くなる'}`,`${nm} ／ ${V.label}`,`高台：${CLAYS[state.clay].label}の素地`]);
+    cancelAnimationFrame(rafTex);rafTex=requestAnimationFrame(()=>{paintTexture(state,compute(state));gl3.refresh()});
+  }
+  cancelAnimationFrame(rafTiles);rafTiles=requestAnimationFrame(()=>renderTiles(state));
+  markCurrent();
+}
+
+/* ================= toast ================= */
+let toastT=0;function toast(msg){const t=$('toast');t.textContent=msg;t.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>t.hidden=true,2600)}
+
+/* ================= saved patterns ================= */
+const LS='yohen-lab-patterns';
+let favs=[],favMode='loading',favCol=null,pendingDel=null;
+function defaultName(){return nameOf(state,compute(state))[0]+'の'+VESSELS[state.vessel].label}
+const sameState=a=>KEYS.every(k=>a[k]===state[k]);
+function metaOf(s){const C=COLS[s.col]||COLS.none;return `${VESSELS[s.vessel]?.label||'茶碗'} · ${s.col==='none'?'発色剤なし':C.label+' '+s.amt+'%'} · ${BASES[s.base].label} · ${atmWord(s.atm)} ${s.temp}℃ · ${CLAYS[s.clay].label}`}
+function lsLoad(){try{const v=JSON.parse(localStorage.getItem(LS)||'[]');return Array.isArray(v)?v:[]}catch(e){return []}}
+function lsWrite(){try{localStorage.setItem(LS,JSON.stringify(favs));return true}catch(e){return false}}
+function modeStatus(){$('favStatus').textContent=favMode==='db'?'あなた専用に保存':favMode==='local'?'このブラウザにだけ保存':'読み込み中…'}
+function useLocal(){if(favMode==='db')return;favMode='local';favs=lsLoad();modeStatus();renderFavs()}
+function markCurrent(){$('favList').querySelectorAll('.fi').forEach(li=>{const f=favs.find(x=>x.id===li.dataset.id);li.classList.toggle('cur',!!f&&sameState({...state,...pick(f.s)}))})}
+function renderFavs(){
+  const ul=$('favList');ul.innerHTML='';$('favCount').textContent=favs.length;
+  if(favMode==='loading'){const p=document.createElement('li');p.className='empty';p.textContent='保存したパターンを読み込んでいます…';ul.append(p);return}
+  if(!favs.length){const p=document.createElement('li');p.className='empty';p.textContent='まだありません。気に入った焼き上がりができたら「この焼き上がりを保存」を押すか、名前を付けて保存してください。';ul.append(p);return}
+  favs.forEach(f=>{const s={...state,...pick(f.s)},r=compute(s);
+    const li=document.createElement('li');li.className='fi';li.dataset.id=f.id;
+    const sw=document.createElement('div');sw.className='fsw';sw.style.background=`radial-gradient(circle at 42% 38%, ${rgb(r.col)} 0 46%, ${rgb(mix(r.thinCol,r.col,.4))} 60%, ${rgb(r.clay)} 66% 100%)`;
+    const w=document.createElement('div');w.style.minWidth='0';const nm=document.createElement('div');nm.className='fn';nm.textContent=f.name;const mt=document.createElement('div');mt.className='fm';mt.textContent=metaOf(s);w.append(nm,mt);
+    const act=document.createElement('div');act.className='fa';
+    const op=document.createElement('button');op.type='button';op.className='sbtn';op.textContent='開く';op.onclick=()=>{Object.assign(state,pick(f.s));sync();closePop();toast(`「${f.name}」を開きました`)};
+    const del=document.createElement('button');del.type='button';del.className='sbtn'+(pendingDel===f.id?' danger':'');del.textContent=pendingDel===f.id?'本当に削除':'削除';
+    del.onclick=()=>{if(pendingDel!==f.id){pendingDel=f.id;renderFavs();return}pendingDel=null;removeFav(f)};
+    act.append(op,del);li.append(sw,w,act);ul.append(li)});
+  markCurrent();
+}
+async function saveFav(name){
+  name=(name||defaultName()).slice(0,40);
+  const item={kind:'pattern',name,s:pick(state),createdAt:Date.now()};
+  if(favMode==='db'&&favCol){try{await favCol.add(item);toast(`「${name}」を保存しました`)}catch(e){toast('保存できませんでした。通信状況を確かめて、もう一度お試しください。')}return}
+  favs.unshift({id:'l'+item.createdAt,...item});
+  if(lsWrite())toast(`「${name}」を保存しました（このブラウザ内）`);else toast('このブラウザでは保存できない設定です。');
+  renderFavs();
+}
+async function removeFav(f){
+  if(favMode==='db'&&favCol){try{await favCol.doc(f.id).delete()}catch(e){toast('削除できませんでした。')}return}
+  favs=favs.filter(x=>x.id!==f.id);lsWrite();renderFavs();
+}
+$('saveBtn').onclick=()=>saveFav();
+$('saveForm').addEventListener('submit',e=>{e.preventDefault();saveFav($('favName').value.trim());$('favName').value=''});
+const pop=$('favPop'),favBtn=$('favBtn');
+function openPop(){pop.hidden=false;favBtn.setAttribute('aria-expanded','true')}
+function closePop(){pop.hidden=true;favBtn.setAttribute('aria-expanded','false');pendingDel=null}
+favBtn.onclick=()=>pop.hidden?openPop():closePop();
+document.addEventListener('click',e=>{if(!pop.hidden&&!e.target.closest('.favwrap'))closePop()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closePop();closeSheet()}});
+async function initStore(){
+  let settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;useLocal()}},10000);
+  const fallback=()=>{if(!settled){settled=true;clearTimeout(timer)}useLocal()};
+  try{
+    if(!window.claude||typeof window.claude.use!=='function')return fallback();
+    const [db,user]=await Promise.all([window.claude.use('db'),window.claude.use('user')]);
+    const id=user?await user.id():null;if(!db||!id)return fallback();
+    favCol=db.collection('data/users/'+id);
+    favCol.onSnapshot(snap=>{if(!settled){settled=true;clearTimeout(timer)}favMode='db';
+      favs=snap.docs.map(d=>({id:d.id,...d.data()})).filter(f=>f.kind==='pattern'&&f.s).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));modeStatus();renderFavs()},
+      ()=>{if(favMode==='db')$('favStatus').textContent='接続が切れました。開き直してください';else{favCol=null;fallback()}});
+  }catch(e){fallback()}
+}
+
+/* ================= photo analysis ================= */
+let photoBlob=null,photoPal=[],photoURL='',sampleFn=null,sampleChecked=false,anaCtl=null;
+function extractPalette(im){
+  const c=document.createElement('canvas'),k=96,sc=Math.min(1,k/Math.max(im.naturalWidth,im.naturalHeight));
+  c.width=Math.max(1,Math.round(im.naturalWidth*sc));c.height=Math.max(1,Math.round(im.naturalHeight*sc));
+  const x=c.getContext('2d');x.drawImage(im,0,0,c.width,c.height);const d=x.getImageData(0,0,c.width,c.height).data,px=[];
+  for(let i=0;i<d.length;i+=4)if(d[i+3]>200)px.push([d[i],d[i+1],d[i+2]]);if(!px.length)return [];
+  const K=6;let cent=[];for(let j=0;j<K;j++)cent.push(px[Math.floor((j+.5)*px.length/K)].slice());const lab=new Int16Array(px.length);
+  for(let it=0;it<10;it++){const sum=cent.map(()=>[0,0,0,0]);px.forEach((p,i)=>{let b=0,bd=1e9;cent.forEach((q,j)=>{const dd=(p[0]-q[0])**2+(p[1]-q[1])**2+(p[2]-q[2])**2;if(dd<bd){bd=dd;b=j}});lab[i]=b;const s=sum[b];s[0]+=p[0];s[1]+=p[1];s[2]+=p[2];s[3]++});
+    cent=cent.map((q,j)=>sum[j][3]?[sum[j][0]/sum[j][3],sum[j][1]/sum[j][3],sum[j][2]/sum[j][3]]:q)}
+  const cnt=new Array(K).fill(0);lab.forEach(l=>cnt[l]++);
+  return cent.map((c,j)=>({c,p:cnt[j]/px.length})).filter(o=>o.p>.02).sort((a,b)=>b.p-a.p);
+}
+const downscale=(im,max=1280)=>new Promise(res=>{const sc=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));const c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*sc);c.height=Math.round(im.naturalHeight*sc);c.getContext('2d').drawImage(im,0,0,c.width,c.height);c.toBlob(b=>res(b),'image/jpeg',.88)});
+async function getSample(){if(sampleChecked)return sampleFn;sampleChecked=true;try{if(window.claude&&typeof window.claude.use==='function'){const s=await window.claude.use('sample');if(s){const lim=await s.limits();if(lim&&lim.images)sampleFn=s}}}catch(e){}return sampleFn}
+function takeFile(file){
+  if(!file||!/^image\//.test(file.type)){toast('画像ファイル（JPEG・PNGなど）を選んでください。');return}
+  if(photoURL)URL.revokeObjectURL(photoURL);photoURL=URL.createObjectURL(file);
+  const im=new Image();im.onload=async()=>{
+    $('thumb').innerHTML='';const ti=document.createElement('img');ti.src=photoURL;ti.alt='';$('thumb').append(ti);
+    $('dropT').textContent=file.name||'貼り付けた画像';$('dropS').textContent='読み込みました。「この器を分析する」を押してください';
+    photoPal=extractPalette(im);$('sw3').innerHTML='';photoPal.slice(0,3).forEach(o=>{const i=document.createElement('i');i.style.background=rgb(o.c);$('sw3').append(i)});
+    photoBlob=await downscale(im);$('anaBtn').disabled=!photoBlob};
+  im.onerror=()=>toast('この画像は開けませんでした。JPEGかPNGでお試しください。');im.src=photoURL;
+}
+const drop=$('drop');
+$('photo').addEventListener('change',e=>takeFile(e.target.files&&e.target.files[0]));
+['dragenter','dragover'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(t=>drop.addEventListener(t,()=>drop.classList.remove('over')));
+drop.addEventListener('drop',e=>{e.preventDefault();takeFile(e.dataTransfer.files&&e.dataTransfer.files[0])});
+document.addEventListener('paste',e=>{const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));if(it)takeFile(it.getAsFile())});
+const ENUM={vessel:Object.keys(VESSELS),col:Object.keys(COLS),base:Object.keys(BASES),clay:Object.keys(CLAYS)};
+function cleanAna(a){
+  if(!a||typeof a!=='object')throw new Error('bad');const s={};
+  for(const k of ['vessel','col','base','clay'])s[k]=ENUM[k].includes(a[k])?a[k]:state[k];
+  const C=COLS[s.col];s.amt=s.col==='none'?0:+(Math.round(clamp(+a.amt||C.def,0,C.max)/C.step)*C.step).toFixed(2);
+  s.atm=clamp(+a.atm);s.cool=clamp(+a.cool);s.thick=clamp(+a.thick);s.temp=Math.round(clamp(+a.temp||1240,1100,1320)/5)*5;
+  return {s,name:String(a.name||'').slice(0,30),yomi:String(a.yomi||'').slice(0,30),isCeramic:a.isCeramic!==false,confidence:String(a.confidence||'').slice(0,4),
+    reasons:a.reasons&&typeof a.reasons==='object'?a.reasons:{},highlights:Array.isArray(a.highlights)?a.highlights.slice(0,4).map(x=>String(x).slice(0,120)):[],caveat:String(a.caveat||'').slice(0,200)};
+}
+const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e};
+function openSheet(){const sh=$('sheet');sh.hidden=false;$('sheetImg').src=photoURL;$('pal').innerHTML='';
+  photoPal.forEach(o=>{const ch=el('span','chip');const i=document.createElement('i');i.style.background=rgb(o.c);ch.append(i,document.createTextNode(`${hex(o.c)} ${Math.round(o.p*100)}%`));$('pal').append(ch)});$('sheetX').focus()}
+function closeSheet(){$('sheet').hidden=true;if(anaCtl){anaCtl.abort();anaCtl=null}}
+$('sheetX').onclick=closeSheet;
+function showAna(r){
+  const out=$('anaOut');out.innerHTML='';
+  if(!r.isCeramic){out.append(el('p','empty','この写真からは陶磁器の釉を読み取れませんでした。器の表面がはっきり写った写真でお試しください。'));return}
+  const head=el('div','name');head.append(el('b',null,r.name||'推定結果'));if(r.yomi)head.append(el('span','m',r.yomi));head.querySelector('b').style.fontSize='32px';
+  const tg=el('div','tags');tg.append(el('span','tag'+(r.confidence==='高'?' good':r.confidence==='低'?' warn':''),'確信度 '+(r.confidence||'—')));metaOf(r.s).split(' · ').forEach(t=>tg.append(el('span','tag',t)));
+  const ul=el('ul','why');['成分','雰囲気','温度','冷却','素地'].forEach((k,i)=>{if(!r.reasons[k])return;const li=el('li');li.append(el('span','num',String([1,2,3,3,4][i])),el('span','k',k),el('span','v',String(r.reasons[k]).slice(0,240)));ul.append(li)});
+  out.append(head,tg,ul);
+  if(r.highlights.length){out.append(el('div','m','この器の見どころ'));const h=el('ul');h.style.cssText='margin:4px 0 0;padding-left:1.2em;font-size:13px';r.highlights.forEach(t=>h.append(el('li',null,t)));out.append(h)}
+  if(r.caveat)out.append(el('p','m','写真で判断しにくい点：'+r.caveat));
+  const ap=el('button','btn pri','シミュレーターに反映');ap.type='button';ap.style.width='100%';
+  ap.onclick=()=>{Object.assign(state,r.s);sync();$('favName').value=((r.name||'推定')+'（写真から）').slice(0,40);closeSheet();toast('推定した調合を反映しました。ノードで微調整できます');$('stage').scrollIntoView({behavior:reduceMotion?'auto':'smooth',block:'start'})};
+  out.append(ap,el('p','m','写真の色は照明やカメラで変わるため、推定は目安です。'));
+}
+function buildPrompt(){
+  const pal=photoPal.map(o=>`${hex(o.c)}（${Math.round(o.p*100)}%）`).join('、')||'不明';
+  return `あなたは陶芸の釉薬と焼成に詳しい専門家です。添付した写真の器を観察し、どんな釉・焼成でこの色と景色になったかを推定してください。
+写真から機械的に抽出した主な色（背景を含む）: ${pal}
+次のシミュレーターの変数に当てはめて、JSONだけを返してください（前後に文章やコードブロックを付けない）。
+{"isCeramic": true または false,
+ "name": 釉や作風の名称（例: 辰砂、織部、青磁、油滴天目、黄瀬戸、瑠璃釉、志野、飴釉、灰釉。日本語）,
+ "yomi": nameのよみ（ひらがな）,
+ "vessel": "chawan"(茶碗・碗) | "sara"(皿・鉢) | "yunomi"(湯呑・カップ・筒形) | "hanaire"(花入・壺・瓶),
+ "col": "none" | "fe"(鉄) | "cu"(銅) | "co"(コバルト) | "cr"(クロム) | "crsn"(クロム＋スズのピンク),
+ "amt": 発色剤の量 %（fe 0〜12、cu 0〜6、co 0〜3、cr 0〜3、crsn 0〜1）,
+ "base": "clear"(石灰透明釉) | "ash"(灰釉) | "feld"(長石釉・乳白) | "matte"(マット釉),
+ "atm": 0（酸化）〜1（還元）, "temp": 1100〜1320, "cool": 0（急冷）〜1（徐冷）,
+ "clay": "porcelain"(磁器土) | "stoneware"(白土・炻器) | "red"(赤土) | "black"(黒土),
+ "thick": 0（薄）〜1（厚）, "confidence": "高" | "中" | "低",
+ "reasons": {"成分": "...", "雰囲気": "...", "温度": "...", "冷却": "...", "素地": "..."}（各60字以内、写真のどこを見て判断したか）,
+ "highlights": 景色や見どころを最大3つ（各40字以内）,
+ "caveat": 写真だけでは判断しにくい点（60字以内）}`;
+}
+$('anaBtn').onclick=async()=>{
+  if(!photoBlob)return;openSheet();const out=$('anaOut');out.innerHTML='';
+  const ld=el('div','loading');ld.append(el('span','dot'),el('span',null,'釉の色・流れ・素地の見え方を読み取っています…'));out.append(ld);
+  const s=await getSample();
+  if(!s){out.innerHTML='';out.append(el('p','empty','この閲覧環境ではAIによる画像分析を使えません。claude.aiにサインインした状態で開くと使えます。抽出した色見本は上に表示しています。'));return}
+  if(anaCtl)anaCtl.abort();anaCtl=new AbortController();$('anaBtn').disabled=true;
+  try{const raw=await s.json(buildPrompt(),{images:[photoBlob],signal:anaCtl.signal,modelTier:'default',cache:false});showAna(cleanAna(raw))}
+  catch(e){out.innerHTML='';const c=e&&e.code;out.append(el('p','empty',c==='not_granted'?'AIの利用が許可されませんでした。ページの「権限」から許可すると使えます。':c==='rate_limited'?'短時間に分析を繰り返したため、少し待ってからもう一度お試しください。':c==='image_rejected'?'この画像は受け付けられませんでした。別の写真でお試しください。':c==='cancelled'?'分析を中止しました。':'分析できませんでした。もう一度押すか、器が大きく写った写真でお試しください。'))}
+  finally{$('anaBtn').disabled=!photoBlob;anaCtl=null}
+};
+
+/* ================= rail ================= */
+document.querySelectorAll('.rail .ri').forEach(b=>b.addEventListener('click',()=>{
+  const go=b.dataset.go,bh=reduceMotion?'auto':'smooth';
+  if(go==='random')return randomize();
+  if(go==='photo'){$('drop').scrollIntoView({behavior:bh,block:'center'});$('photo').focus();return}
+  if(go==='favs'){window.scrollTo({top:0,behavior:bh});openPop();return}
+  const t={stage:'stage',nodes:'nodesHead',chart:'chartCard',why:'whyCard'}[go];$(t).scrollIntoView({behavior:bh,block:'start'});
+  document.querySelectorAll('.rail .ri:not([data-go="random"])').forEach(x=>x.classList.toggle('on',x===b));
+}));
+
+sync();renderFavs();initStore();
+})();
+</script>
+
+</body>
+</html>
