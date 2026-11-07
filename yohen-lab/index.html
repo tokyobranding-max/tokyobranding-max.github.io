@@ -1022,8 +1022,10 @@ function init3D(){
   function moveCursor(cx,cy){
     if(!brush.on){cursor.hidden=true;return}
     const h=hitAt(cx,cy),rc=stage.getBoundingClientRect();if(!h){cursor.hidden=true;return}
-    const px=rc.height/(2*Math.tan(camera.fov*Math.PI/360)*h.distance)*brush.size*2;
-    cursor.hidden=false;cursor.style.width=cursor.style.height=Math.max(6,px)+'px';cursor.style.transform=`translate(${cx-rc.left}px,${cy-rc.top}px) translate(-50%,-50%)`;
+    // the app may be scaled to fit the screen (CSS zoom): convert screen pixels back to the stage's own pixels
+    const z=rc.width/(stage.offsetWidth||rc.width)||1,lx=(cx-rc.left)/z,ly=(cy-rc.top)/z;
+    const px=stage.offsetHeight/(2*Math.tan(camera.fov*Math.PI/360)*h.distance)*brush.size*2;
+    cursor.hidden=false;cursor.style.width=cursor.style.height=Math.max(6,px)+'px';cursor.style.transform=`translate(${lx}px,${ly}px) translate(-50%,-50%)`;
   }
   // interaction
   let drag=null;
