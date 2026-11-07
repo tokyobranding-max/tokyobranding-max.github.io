@@ -182,6 +182,20 @@ button:focus-visible,[tabindex]:focus-visible,input:focus-visible,label:focus-wi
 .toast{position:fixed;z-index:50;left:50%;bottom:max(20px,env(safe-area-inset-bottom,0px));transform:translateX(-50%);padding:10px 16px;border-radius:12px;background:rgba(34,34,31,.92);border:1px solid var(--edge);font-size:13px;max-width:calc(100vw - 32px)}
 .foot{font-size:11.5px;color:var(--dark-mute);max-width:80ch}
 @media (prefers-reduced-motion:reduce){.dot{animation:none}}
+/* one-screen mode (desktop): fixed geometry, then the whole app is scaled to the window height */
+html.fit body{padding-block:12px 12px}
+.fit .main{grid-template-columns:250px minmax(0,1fr) 400px;grid-template-areas:"left stage right" "tests tests right";grid-template-rows:560px 172px}
+.fit .left{display:flex}
+.fit .stage{height:560px}
+.fit .tests{height:172px}
+.fit .tile canvas{aspect-ratio:auto;height:92px;object-fit:cover}
+.fit .right{height:calc(560px + 172px + 18px);min-height:0}
+.fit #whyCard{flex:1 1 auto;min-height:0;overflow:auto}
+.fit #chartCard{flex:none}
+.fit .nodes{grid-template-columns:repeat(5,minmax(0,1fr));gap:20px}
+.fit .node:not(:last-child)::after{content:"";position:absolute;right:-21px;top:66px;width:20px;border-top:1.6px dashed var(--acc)}
+.fit .foot{margin:0}
+
 </style>
 
 <div class="app">
@@ -1020,6 +1034,20 @@ document.querySelectorAll('.rail .ri').forEach(b=>b.addEventListener('click',()=
   const t={stage:'stage',nodes:'nodesHead',chart:'chartCard',why:'whyCard'}[go];$(t).scrollIntoView({behavior:bh,block:'start'});
   document.querySelectorAll('.rail .ri:not([data-go="random"])').forEach(x=>x.classList.toggle('on',x===b));
 }));
+
+/* ================= fit to one screen ================= */
+const appEl=document.querySelector('.app');
+function fitScreen(){
+  const de=document.documentElement;
+  if(innerWidth<1024||innerHeight<560){de.classList.remove('fit');appEl.style.zoom='';appEl.style.maxWidth='';return}
+  de.classList.add('fit');appEl.style.zoom='1';appEl.style.maxWidth='';
+  const top=appEl.getBoundingClientRect().top+scrollY,bottom=$('nodes').getBoundingClientRect().bottom+scrollY;
+  const need=bottom-top+40,z=clamp((innerHeight-0)/need,.6,1);
+  appEl.style.zoom=String(+z.toFixed(3));
+  appEl.style.maxWidth=Math.min(2200,(document.documentElement.clientWidth-32)/z)+'px';
+}
+let fitT=0;addEventListener('resize',()=>{clearTimeout(fitT);fitT=setTimeout(fitScreen,80)});
+fitScreen();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fitScreen);
 
 sync();renderFavs();initStore();
 })();
