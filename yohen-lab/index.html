@@ -190,7 +190,17 @@ button:focus-visible,[tabindex]:focus-visible,input:focus-visible,label:focus-wi
 .empty{font-size:12.5px;color:var(--mute);padding:12px;border:1px dashed var(--edge);border-radius:12px;margin:0}
 .sheet{position:fixed;z-index:40;top:max(16px,env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:max(16px,env(safe-area-inset-bottom,0px));width:min(440px,calc(100vw - 32px));overflow:auto;padding:20px;background:rgba(34,34,31,.94);display:flex;flex-direction:column;gap:14px}
 .sheet .x{width:34px;height:34px;border-radius:10px;border:1px solid var(--edge);background:transparent;display:grid;place-items:center}
-.sheet img{width:100%;max-height:220px;object-fit:contain;border-radius:12px;background:rgba(255,255,255,.04)}
+.simgs{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
+.simgs img,.cmp img{width:100%;height:150px;object-fit:contain;border-radius:12px;background:rgba(255,255,255,.05);display:block}
+.cmp{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cmp figure{margin:0}.cmp figcaption{font-size:11px;color:var(--mute);margin-top:4px;text-align:center}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:13px}
+.steps li{display:flex;align-items:center;gap:10px;color:var(--mute)}
+.steps li.on{color:var(--ink)}.steps li.done{color:var(--acc-text)}
+.steps li i{width:18px;height:18px;border-radius:50%;border:1.5px solid currentColor;display:grid;place-items:center;font-style:normal;font-size:10px;flex:none}
+.steps li.on i{border-color:var(--acc);background:rgba(52,183,164,.25)}
+.steps li.done i::after{content:"✓"}
+.diff{font-size:12.5px;padding:10px 12px;border-radius:10px;background:rgba(52,183,164,.1);border:1px solid rgba(122,217,202,.35)}
 .pal{display:flex;gap:6px;flex-wrap:wrap}
 .chip{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:var(--mute);font-variant-numeric:tabular-nums}
 .chip i{width:40px;height:26px;border-radius:6px;display:block;border:1px solid var(--edge)}
@@ -343,8 +353,8 @@ html.fit body{padding-block:12px 12px}
 
 <aside class="g sheet" id="sheet" hidden aria-label="写真から分析">
   <div class="ch"><span class="t">写真から分析</span><button class="x" type="button" id="sheetX" aria-label="閉じる">✕</button></div>
-  <img id="sheetImg" alt="分析した器の写真">
-  <div><div class="m" style="margin-bottom:6px">写真から抽出した主な色</div><div class="pal" id="pal"></div></div>
+  <div class="simgs" id="sheetImgs"></div>
+  <div><div class="m" style="margin-bottom:6px">器の部分から抽出した主な色（背景を除く）</div><div class="pal" id="pal"></div></div>
   <div id="anaOut" aria-live="polite"></div>
 </aside>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -854,7 +864,14 @@ function init3D(){
     if(view.dirty&&view.fit){spin.rotation.y=view.yaw;placeCam();renderer.render(scene,camera);updateSpots();view.dirty=false}
     requestAnimationFrame(loop)}
   requestAnimationFrame(loop);
-  return {setVessel,refresh(){glazeT.needsUpdate=true;rouT.needsUpdate=true;view.dirty=true},spots,
+  function capture(){
+    const keep={yaw:view.yaw,elev:view.elev,zoom:view.zoom};
+    view.yaw=-.35;view.elev=view.home;view.zoom=1;spin.rotation.y=view.yaw;placeCam();
+    glazeT.needsUpdate=true;rouT.needsUpdate=true;renderer.render(scene,camera);
+    const pr=new Promise(res=>renderer.domElement.toBlob(b=>res(b),'image/jpeg',.9));
+    Object.assign(view,keep);view.dirty=true;return pr;
+  }
+  return {setVessel,capture,refresh(){glazeT.needsUpdate=true;rouT.needsUpdate=true;view.dirty=true},spots,
     setLabels(arr){spots.forEach((sp,i)=>sp.span.textContent=arr[i]);view.dirty=true}};
 }
 try{gl3=init3D()}catch(e){gl3=null}
@@ -1124,98 +1141,183 @@ async function initStore(){
 }
 
 /* ================= photo analysis ================= */
-let photoBlob=null,photoPal=[],photoURL='',sampleFn=null,sampleChecked=false,anaCtl=null;
-function extractPalette(im){
-  const c=document.createElement('canvas'),k=96,sc=Math.min(1,k/Math.max(im.naturalWidth,im.naturalHeight));
-  c.width=Math.max(1,Math.round(im.naturalWidth*sc));c.height=Math.max(1,Math.round(im.naturalHeight*sc));
-  const x=c.getContext('2d');x.drawImage(im,0,0,c.width,c.height);const d=x.getImageData(0,0,c.width,c.height).data,px=[];
-  for(let i=0;i<d.length;i+=4)if(d[i+3]>200)px.push([d[i],d[i+1],d[i+2]]);if(!px.length)return [];
-  const K=6;let cent=[];for(let j=0;j<K;j++)cent.push(px[Math.floor((j+.5)*px.length/K)].slice());const lab=new Int16Array(px.length);
-  for(let it=0;it<10;it++){const sum=cent.map(()=>[0,0,0,0]);px.forEach((p,i)=>{let b=0,bd=1e9;cent.forEach((q,j)=>{const dd=(p[0]-q[0])**2+(p[1]-q[1])**2+(p[2]-q[2])**2;if(dd<bd){bd=dd;b=j}});lab[i]=b;const s=sum[b];s[0]+=p[0];s[1]+=p[1];s[2]+=p[2];s[3]++});
+let photos=[],photoPal=[],bgPal=[],maxImgs=4,sampleFn=null,sampleChecked=false,anaCtl=null,lastAna=null;
+const MAXPH=3;
+function kmeans(px,K,it=10){
+  if(!px.length)return [];K=Math.min(K,px.length);let cent=[];for(let j=0;j<K;j++)cent.push(px[Math.floor((j+.5)*px.length/K)].slice());const lab=new Int16Array(px.length);
+  for(let n=0;n<it;n++){const sum=cent.map(()=>[0,0,0,0]);px.forEach((p,i)=>{let b=0,bd=1e9;cent.forEach((q,j)=>{const d=(p[0]-q[0])**2+(p[1]-q[1])**2+(p[2]-q[2])**2;if(d<bd){bd=d;b=j}});lab[i]=b;const s=sum[b];s[0]+=p[0];s[1]+=p[1];s[2]+=p[2];s[3]++});
     cent=cent.map((q,j)=>sum[j][3]?[sum[j][0]/sum[j][3],sum[j][1]/sum[j][3],sum[j][2]/sum[j][3]]:q)}
   const cnt=new Array(K).fill(0);lab.forEach(l=>cnt[l]++);
   return cent.map((c,j)=>({c,p:cnt[j]/px.length})).filter(o=>o.p>.02).sort((a,b)=>b.p-a.p);
 }
-const downscale=(im,max=1280)=>new Promise(res=>{const sc=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));const c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*sc);c.height=Math.round(im.naturalHeight*sc);c.getContext('2d').drawImage(im,0,0,c.width,c.height);c.toBlob(b=>res(b),'image/jpeg',.88)});
-async function getSample(){if(sampleChecked)return sampleFn;sampleChecked=true;try{if(window.claude&&typeof window.claude.use==='function'){const s=await window.claude.use('sample');if(s){const lim=await s.limits();if(lim&&lim.images)sampleFn=s}}}catch(e){}return sampleFn}
-function takeFile(file){
-  if(!file||!/^image\//.test(file.type)){toast('画像ファイル（JPEG・PNGなど）を選んでください。');return}
-  if(photoURL)URL.revokeObjectURL(photoURL);photoURL=URL.createObjectURL(file);
-  const im=new Image();im.onload=async()=>{
-    $('thumb').innerHTML='';const ti=document.createElement('img');ti.src=photoURL;ti.alt='';$('thumb').append(ti);
-    $('dropT').textContent=file.name||'貼り付けた画像';$('dropS').textContent='読み込みました。「この器を分析する」を押してください';
-    photoPal=extractPalette(im);$('sw3').innerHTML='';photoPal.slice(0,3).forEach(o=>{const i=document.createElement('i');i.style.background=rgb(o.c);$('sw3').append(i)});
-    photoBlob=await downscale(im);$('anaBtn').disabled=!photoBlob};
-  im.onerror=()=>toast('この画像は開けませんでした。JPEGかPNGでお試しください。');im.src=photoURL;
+// separate the vessel from the backdrop: border pixels define the background, the rest is the vessel
+function vesselPalette(ims){
+  const fg=[],bgAll=[];
+  ims.forEach(im=>{
+    const k=140,sc=Math.min(1,k/Math.max(im.naturalWidth,im.naturalHeight)),W=Math.max(1,Math.round(im.naturalWidth*sc)),H=Math.max(1,Math.round(im.naturalHeight*sc));
+    const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');x.drawImage(im,0,0,W,H);const d=x.getImageData(0,0,W,H).data;
+    const bw=Math.max(2,Math.round(Math.min(W,H)*.06)),border=[],inner=[];
+    for(let y=0;y<H;y++)for(let xx=0;xx<W;xx++){const o=(y*W+xx)*4;if(d[o+3]<200)continue;const p=[d[o],d[o+1],d[o+2]];
+      (xx<bw||y<bw||xx>=W-bw||y>=H-bw?border:inner).push(p)}
+    const bg=kmeans(border,3).filter(o=>o.p>.08);bgAll.push(...bg);
+    const sel=inner.filter(p=>bg.every(o=>Math.hypot(p[0]-o.c[0],p[1]-o.c[1],p[2]-o.c[2])>34));
+    fg.push(...(sel.length>inner.length*.04?sel:inner));
+  });
+  return {fg:kmeans(fg,6),bg:kmeans(bgAll.map(o=>o.c),2)};
+}
+const downscale=(im,max=1600)=>new Promise(res=>{const sc=Math.min(1,max/Math.max(im.naturalWidth,im.naturalHeight));const c=document.createElement('canvas');c.width=Math.round(im.naturalWidth*sc);c.height=Math.round(im.naturalHeight*sc);c.getContext('2d').drawImage(im,0,0,c.width,c.height);c.toBlob(b=>res(b),'image/jpeg',.9)});
+async function getSample(){if(sampleChecked)return sampleFn;sampleChecked=true;try{if(window.claude&&typeof window.claude.use==='function'){const s=await window.claude.use('sample');if(s){const lim=await s.limits();if(lim&&lim.images){sampleFn=s;maxImgs=lim.images.maxCount||4}}}}catch(e){}return sampleFn}
+const loadImg=url=>new Promise((res,rej)=>{const im=new Image();im.onload=()=>res(im);im.onerror=rej;im.src=url});
+async function takeFiles(list){
+  const files=[...list].filter(f=>f&&/^image\//.test(f.type)).slice(0,MAXPH);
+  if(!files.length){toast('画像ファイル（JPEG・PNGなど）を選んでください。');return}
+  photos.forEach(p=>URL.revokeObjectURL(p.url));photos=[];
+  try{for(const f of files){const url=URL.createObjectURL(f),im=await loadImg(url);photos.push({url,im,blob:await downscale(im),name:f.name||'貼り付けた画像'})}}
+  catch(e){toast('開けない画像がありました。JPEGかPNGでお試しください。')}
+  if(!photos.length)return;
+  $('thumb').innerHTML='';const ti=document.createElement('img');ti.src=photos[0].url;ti.alt='';$('thumb').append(ti);
+  $('dropT').textContent=photos.length>1?`${photos.length}枚の写真（${photos.map(p=>p.name).join('、')}）`:photos[0].name;
+  $('dropS').textContent=photos.length<MAXPH?`読み込みました。外側・内側・高台など、あと${MAXPH-photos.length}枚まで一緒に選べます`:'読み込みました。「この器を分析する」を押してください';
+  const vp=vesselPalette(photos.map(p=>p.im));photoPal=vp.fg;bgPal=vp.bg;
+  $('sw3').innerHTML='';photoPal.slice(0,3).forEach(o=>{const i=document.createElement('i');i.style.background=rgb(o.c);$('sw3').append(i)});
+  $('anaBtn').disabled=false;
 }
 const drop=$('drop');
-$('photo').addEventListener('change',e=>takeFile(e.target.files&&e.target.files[0]));
+$('photo').multiple=true;
+$('photo').addEventListener('change',e=>takeFiles(e.target.files||[]));
 ['dragenter','dragover'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over')}));
 ['dragleave','drop'].forEach(t=>drop.addEventListener(t,()=>drop.classList.remove('over')));
-drop.addEventListener('drop',e=>{e.preventDefault();takeFile(e.dataTransfer.files&&e.dataTransfer.files[0])});
-document.addEventListener('paste',e=>{const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));if(it)takeFile(it.getAsFile())});
+drop.addEventListener('drop',e=>{e.preventDefault();takeFiles(e.dataTransfer.files||[])});
+document.addEventListener('paste',e=>{const it=[...(e.clipboardData?.items||[])].filter(i=>i.type.startsWith('image/')).map(i=>i.getAsFile());if(it.length)takeFiles(it)});
 const ENUM={vessel:Object.keys(VESSELS),col:Object.keys(COLS),base:Object.keys(BASES),clay:Object.keys(CLAYS)};
-function cleanAna(a){
-  if(!a||typeof a!=='object')throw new Error('bad');const s={};
-  for(const k of ['vessel','col','base','clay'])s[k]=ENUM[k].includes(a[k])?a[k]:state[k];
-  const C=COLS[s.col];s.amt=s.col==='none'?0:+(Math.round(clamp(+a.amt||C.def,0,C.max)/C.step)*C.step).toFixed(2);
-  s.atm=clamp(+a.atm);s.cool=clamp(+a.cool);s.thick=clamp(+a.thick);s.temp=Math.round(clamp(+a.temp||1240,1100,1320)/5)*5;
+function cleanAna(a,prev){
+  if(!a||typeof a!=='object')throw new Error('bad');const s={},fb=prev?prev.s:state;
+  for(const k of ['vessel','col','base','clay'])s[k]=ENUM[k].includes(a[k])?a[k]:fb[k];
+  const C=COLS[s.col],num=(v,d)=>Number.isFinite(+v)&&v!==null&&v!==''?+v:d;
+  s.amt=s.col==='none'?0:+(Math.round(clamp(num(a.amt,C.def),0,C.max)/C.step)*C.step).toFixed(2);
+  s.atm=clamp(num(a.atm,fb.atm));s.cool=clamp(num(a.cool,fb.cool));s.thick=clamp(num(a.thick,fb.thick));s.temp=Math.round(clamp(num(a.temp,fb.temp||1240),1100,1320)/5)*5;
   const hx=v=>{const m=/^#?([0-9a-f]{6})$/i.exec(String(v||'').trim());return m?[0,2,4].map(i=>parseInt(m[1].slice(i,i+2),16)):null};
-  const co=a.colors&&typeof a.colors==='object'?a.colors:{};const tint={body:hx(co.body),rim:hx(co.rim),clay:hx(co.clay),name:String(a.name||'').slice(0,30),yomi:String(a.yomi||'').slice(0,30)};
+  const co=a.colors&&typeof a.colors==='object'?a.colors:{};
+  const name=String(a.name||(prev&&prev.name)||'').slice(0,30),yomi=String(a.yomi||(prev&&prev.yomi)||'').slice(0,30);
+  const tint={body:hx(co.body)||(prev&&prev.s.tint&&prev.s.tint.body)||null,rim:hx(co.rim)||(prev&&prev.s.tint&&prev.s.tint.rim)||null,clay:hx(co.clay)||(prev&&prev.s.tint&&prev.s.tint.clay)||null,name,yomi};
   s.tint=tint.body?tint:null;
-  return {s,name:String(a.name||'').slice(0,30),yomi:String(a.yomi||'').slice(0,30),isCeramic:a.isCeramic!==false,confidence:String(a.confidence||'').slice(0,4),
-    reasons:a.reasons&&typeof a.reasons==='object'?a.reasons:{},highlights:Array.isArray(a.highlights)?a.highlights.slice(0,4).map(x=>String(x).slice(0,120)):[],caveat:String(a.caveat||'').slice(0,200)};
+  const obs=a.observe&&typeof a.observe==='object'?a.observe:{};
+  return {s,name,yomi,isCeramic:a.isCeramic!==false,confidence:String(a.confidence||'').slice(0,4),obs,
+    reasons:a.reasons&&typeof a.reasons==='object'?a.reasons:(prev?prev.reasons:{}),highlights:Array.isArray(a.highlights)?a.highlights.slice(0,4).map(x=>String(x).slice(0,120)):(prev?prev.highlights:[]),
+    caveat:String(a.caveat||'').slice(0,200),diff:String(a.diff||'').slice(0,200)};
 }
 const el=(tag,cls,text)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e};
-function openSheet(){const sh=$('sheet');sh.hidden=false;$('sheetImg').src=photoURL;$('pal').innerHTML='';
-  photoPal.forEach(o=>{const ch=el('span','chip');const i=document.createElement('i');i.style.background=rgb(o.c);ch.append(i,document.createTextNode(`${hex(o.c)} ${Math.round(o.p*100)}%`));$('pal').append(ch)});$('sheetX').focus()}
+function openSheet(){const sh=$('sheet');sh.hidden=false;const box=$('sheetImgs');box.innerHTML='';photos.forEach((p,i)=>{const im=document.createElement('img');im.src=p.url;im.alt=`分析する器の写真${i+1}`;box.append(im)});
+  $('pal').innerHTML='';photoPal.forEach(o=>{const ch=el('span','chip');const i=document.createElement('i');i.style.background=rgb(o.c);ch.append(i,document.createTextNode(`${hex(o.c)} ${Math.round(o.p*100)}%`));$('pal').append(ch)});$('sheetX').focus()}
 function closeSheet(){$('sheet').hidden=true;if(anaCtl){anaCtl.abort();anaCtl=null}}
 $('sheetX').onclick=closeSheet;
+const STEPS=['写真を観察して調合を推定','シミュレーターで再現して撮影','写真と見比べて補正'];
+function showSteps(cur,note){const out=$('anaOut');out.innerHTML='';const ul=el('ul','steps');
+  STEPS.forEach((t,i)=>{const li=el('li',i<cur?'done':i===cur?'on':'');const ic=el('i',null,i<cur?'':String(i+1));li.append(ic,el('span',null,t));ul.append(li)});
+  out.append(ul);if(note){const ld=el('div','loading');ld.append(el('span','dot'),el('span',null,note));out.append(ld)}}
+let renderURL='';
 function showAna(r){
   const out=$('anaOut');out.innerHTML='';
   if(!r.isCeramic){out.append(el('p','empty','この写真からは陶磁器の釉を読み取れませんでした。器の表面がはっきり写った写真でお試しください。'));return}
-  const head=el('div','name');head.append(el('b',null,r.name||'推定結果'));if(r.yomi)head.append(el('span','m',r.yomi));head.querySelector('b').style.fontSize='32px';
+  const head=el('div','name');head.append(el('b',null,r.name||'推定結果'));if(r.yomi)head.append(el('span','m',r.yomi));head.querySelector('b').style.fontSize='30px';
   const tg=el('div','tags');tg.append(el('span','tag'+(r.confidence==='高'?' good':r.confidence==='低'?' warn':''),'確信度 '+(r.confidence||'—')));metaOf(r.s).split(' · ').forEach(t=>tg.append(el('span','tag',t)));
+  out.append(head,tg);
+  if(renderURL&&photos[0]){const cmp=el('div','cmp');[[photos[0].url,'写真'],[renderURL,'シミュレーターでの再現']].forEach(([u,c])=>{const f=el('figure');const im=document.createElement('img');im.src=u;im.alt=c;f.append(im,el('figcaption',null,c));cmp.append(f)});out.append(cmp)}
+  if(r.diff)out.append(el('div','diff','見比べて直した点：'+r.diff));
   const ul=el('ul','why');['成分','雰囲気','温度','冷却','素地'].forEach((k,i)=>{if(!r.reasons[k])return;const li=el('li');li.append(el('span','num',String([1,2,3,3,4][i])),el('span','k',k),el('span','v',String(r.reasons[k]).slice(0,240)));ul.append(li)});
-  out.append(head,tg,ul);
+  out.append(ul);
   if(r.highlights.length){out.append(el('div','m','この器の見どころ'));const h=el('ul');h.style.cssText='margin:4px 0 0;padding-left:1.2em;font-size:13px';r.highlights.forEach(t=>h.append(el('li',null,t)));out.append(h)}
   if(r.caveat)out.append(el('p','m','写真で判断しにくい点：'+r.caveat));
+  if(r.s.tint){const sw=el('div','pal');[['body','釉'],['rim','口縁'],['clay','素地']].forEach(([k,l])=>{if(!r.s.tint[k])return;const ch=el('span','chip');const i=document.createElement('i');i.style.background=rgb(r.s.tint[k]);ch.append(i,document.createTextNode(l+' '+hex(r.s.tint[k])));sw.append(ch)});out.append(el('div','m','反映する写真の色'),sw)}
   const ap=el('button','btn pri','シミュレーターに反映');ap.type='button';ap.style.width='100%';
   ap.onclick=()=>{Object.assign(state,r.s);sync();$('favName').value=((r.name||'推定')+'（写真から）').slice(0,40);closeSheet();toast('推定した調合を反映しました。ノードで微調整できます');$('stage').scrollIntoView({behavior:reduceMotion?'auto':'smooth',block:'start'})};
   const ap2=el('button','btn','色だけ反映（今の器・調合のまま）');ap2.type='button';ap2.style.width='100%';ap2.style.marginTop='8px';ap2.disabled=!r.s.tint;
   ap2.onclick=()=>{state.tint=r.s.tint;sync();closeSheet();toast('写真の色を今の器に反映しました');$('stage').scrollIntoView({behavior:reduceMotion?'auto':'smooth',block:'start'})};
-  if(r.s.tint){const sw=el('div','pal');[['body','釉'],['rim','口縁'],['clay','素地']].forEach(([k,l])=>{if(!r.s.tint[k])return;const ch=el('span','chip');const i=document.createElement('i');i.style.background=rgb(r.s.tint[k]);ch.append(i,document.createTextNode(l+' '+hex(r.s.tint[k])));sw.append(ch)});out.append(el('div','m','反映する写真の色'),sw)}
-  out.append(ap,ap2,el('p','m','「シミュレーターに反映」は推定した調合と写真の色の両方を、「色だけ反映」は今の器と調合に写真の色だけを重ねます。調合を動かすと、調合どおりの色に戻ります。'));
+  const again=el('button','sbtn','もう一度見比べて補正する');again.type='button';again.style.marginTop='10px';again.hidden=!gl3;again.onclick=()=>runRefine(r);
+  out.append(ap,ap2,again,el('p','m','「シミュレーターに反映」は推定した調合と写真の色の両方を、「色だけ反映」は今の器と調合に写真の色だけを重ねます。'));
 }
-function buildPrompt(){
-  const pal=photoPal.map(o=>`${hex(o.c)}（${Math.round(o.p*100)}%）`).join('、')||'不明';
-  return `あなたは陶芸の釉薬と焼成に詳しい専門家です。添付した写真の器を観察し、どんな釉・焼成でこの色と景色になったかを推定してください。
-写真から機械的に抽出した主な色（背景を含む）: ${pal}
-次のシミュレーターの変数に当てはめて、JSONだけを返してください（前後に文章やコードブロックを付けない）。
-{"isCeramic": true または false,
- "name": 釉や作風の名称（例: 辰砂、織部、青磁、油滴天目、黄瀬戸、瑠璃釉、志野、飴釉、灰釉。日本語）,
+const SCHEMA=`{"observe": {"形": "...", "釉の主色と色むら": "...", "口縁・薄い所の色": "...", "ツヤと透明感": "...", "流れ・釉だまり・結晶・斑": "...", "高台・素地": "...", "照明の色かぶり": "..."}（各40字以内。推定より先に、見たままを書く）,
+ "isCeramic": true または false,
+ "name": 釉や作風の名称（日本語。例: 辰砂、織部、トルコ青、青磁、油滴天目、黄瀬戸、瑠璃釉、志野、飴釉、灰釉、鈞窯、結晶釉）,
  "yomi": nameのよみ（ひらがな）,
- "vessel": "chawan"(茶碗・碗) | "sara"(皿・鉢) | "yunomi"(湯呑・カップ・筒形) | "hanaire"(花入・壺・瓶),
+ "vessel": "chawan"(茶碗・碗) | "sara"(皿・平鉢) | "yunomi"(湯呑・カップ・筒形) | "hanaire"(花入・壺・瓶),
  "col": "none" | "fe"(鉄) | "cu"(銅) | "co"(コバルト) | "mn"(マンガン) | "ni"(ニッケル) | "ru"(ルチル・チタン) | "cr"(クロム) | "crsn"(クロム＋スズのピンク),
  "amt": 発色剤の量 %（fe 0〜12、cu 0〜6、co 0〜3、mn 0〜10、ni 0〜4、ru 0〜8、cr 0〜3、crsn 0〜1）,
- "base": "clear"(石灰透明釉) | "ash"(灰釉) | "feld"(長石釉・乳白) | "matte"(マット釉) | "jun"(鈞窯釉・乳青) | "crys"(亜鉛結晶釉) | "alk"(アルカリ釉・銅でトルコ青),
+ "base": "clear"(石灰透明釉) | "ash"(灰釉) | "feld"(長石釉・乳白) | "matte"(マット釉・亜鉛) | "jun"(鈞窯釉・乳青) | "crys"(亜鉛結晶釉) | "alk"(アルカリ釉),
  "atm": 0（酸化）〜1（還元）, "temp": 1100〜1320, "cool": 0（急冷）〜1（徐冷）,
  "clay": "porcelain"(磁器土) | "stoneware"(白土・炻器) | "shigaraki"(信楽土・長石粒) | "red"(赤土) | "black"(黒土),
  "thick": 0（薄）〜1（厚）, "confidence": "高" | "中" | "低",
- "colors": {"body": "#rrggbb"（器の外側・内側の大部分を覆う釉の色）, "rim": "#rrggbb"（口縁や釉が薄い所・流れの縁の色。違いがなければbodyと同じ）, "clay": "#rrggbb"（高台など釉のない素地の色。見えなければnull）}（写真に写っている実際の色。影や強いハイライトではなく、光が素直に当たっている面の平均的な色）,
- "reasons": {"成分": "...", "雰囲気": "...", "温度": "...", "冷却": "...", "素地": "..."}（各60字以内、写真のどこを見て判断したか）,
+ "colors": {"body": "#rrggbb", "rim": "#rrggbb", "clay": "#rrggbb" または null}（照明の色かぶりを差し引いた、釉そのものの色。bodyは器の大部分を覆う釉、rimは口縁・稜線・釉の薄い所や縁の色、clayは高台など釉のない素地。影と強いハイライトは避け、光が素直に当たる面の平均）,
+ "reasons": {"成分": "...", "雰囲気": "...", "温度": "...", "冷却": "...", "素地": "..."}（各60字以内。写真のどこを見て判断したか）,
  "highlights": 景色や見どころを最大3つ（各40字以内）,
  "caveat": 写真だけでは判断しにくい点（60字以内）}`;
+const GUIDE=`見分け方の手引き:
+- 赤：銅赤（辰砂）は還元焼成で、口縁や稜線の薄い所が白〜緑に抜ける。鉄赤（柿）は不透明な錆色で、酸化・徐冷。
+- 緑・青緑：青磁は鉄1〜2%・還元・厚掛けで、しっとりした半透明と貫入。織部は銅・酸化で深い緑、ガラス質でよく流れる。トルコ青（ペルシャ青）は銅＋アルカリ釉・酸化。灰釉は黄緑のビードロが流れ、釉だまりで濃くなる。
+- 青：コバルトは雰囲気によらず鮮やかな青。鈞窯は乳濁した厚い淡青で、銅の紫斑が出ることがある。ニッケル＋亜鉛マットは灰青。ルチルは青白い斑と筋、縁で茶色。
+- 黒・茶：鉄8%以上で天目・黒釉。銀色の斑は油滴（還元・徐冷）、筋は禾目、口縁は茶色く抜ける。マンガン多量は金属的なブロンズ肌。
+- 黄：黄瀬戸は鉄少量＋灰釉・酸化。伊羅保は鉄＋灰釉でざらついた黄土色。
+- 白：志野は長石釉で乳白・柚子肌・火色。透明釉は素地の色がそのまま見える。
+- 素地：高台が白く硬質なら磁器土、灰〜淡い黄土色なら白土、橙の火色と白い粒なら信楽土、赤茶は赤土、黒っぽいのは黒土。還元焼成では素地が灰色を帯びる。
+- 肌：ツヤが無く均一ならマット釉か低めの温度、よく流れて裾に溜まるなら高温か灰釉、大きな花状の結晶は結晶釉＋徐冷。
+- 色：白い背景や白い高台を基準に、照明の黄色み・青みを差し引いて釉の色を決める。
+- 器の形：4つの選択肢のうち最も近いものを選ぶ（平たい鉢や高台の高い浅鉢は sara、深い碗は chawan）。`;
+function palText(){return `器の部分から機械的に抽出した主な色（背景を除く）: ${photoPal.map(o=>`${hex(o.c)}（${Math.round(o.p*100)}%）`).join('、')||'不明'}
+背景の色（照明の色かぶりの目安）: ${bgPal.map(o=>hex(o.c)).join('、')||'不明'}`}
+function prompt1(){return `あなたは陶芸の釉薬と焼成に詳しい専門家です。添付した${photos.length}枚の写真（同じ器を別の角度から写したもの）を観察し、どんな釉・焼成でこの色と景色になったかを推定し、陶芸シミュレーターの変数に当てはめてください。
+${palText()}
+${GUIDE}
+手順：まず observe に見たままを書き、それを根拠に各変数を決める。JSONだけを返す（前後に文章やコードブロックを付けない）。
+${SCHEMA}`}
+function prompt2(r){const cur={vessel:r.s.vessel,col:r.s.col,amt:r.s.amt,base:r.s.base,atm:r.s.atm,temp:r.s.temp,cool:r.s.cool,clay:r.s.clay,thick:r.s.thick,colors:r.s.tint?{body:hex(r.s.tint.body),rim:r.s.tint.rim?hex(r.s.tint.rim):null,clay:r.s.tint.clay?hex(r.s.tint.clay):null}:null,name:r.name};
+  return `あなたは陶芸の釉薬と焼成に詳しい専門家です。最初の${photos.length}枚は実物の器の写真、最後の1枚は陶芸シミュレーターで今の推定を3D表示したものです（作業台の回転台に載せ、左上から照明）。実物とシミュレーターを見比べ、シミュレーターが実物に近づくように推定値を補正してください。
+${palText()}
+今の推定: ${JSON.stringify(cur)}
+見比べる点：釉の色相・明るさ・彩度、口縁や薄い所の色、ツヤとマット感、斑・結晶・流れ・釉だまり、素地の色、器の形。
+シミュレーターの仕組み（補正のヒント）：
+- colors.body・rim・clay がそのまま釉・口縁・素地の色として描かれる。シミュレーターは照明で少し明るく見えるので、実物より明るい・鮮やかならbodyを少し暗く・くすませる。口縁の帯の色が違えばrimを直す。
+- thick は大きいほど釉だまりが濃く、口縁の淡い帯が細くなる。cool は大きいほど結晶・斑が増えてツヤが下がる。base が matte や feld だとツヤが低い。temp が高い・灰釉はよく流れて裾に垂れる。
+- 発色剤・量・雰囲気は斑や窯変の出方を決める。色は colors が優先される。
+${GUIDE}
+JSONだけを返す。下の形式の全項目に加え、"diff" に主な違いと直した点（80字以内）を書く。
+${SCHEMA.replace(/}$/,', "diff": "..."}')}`}
+async function renderCandidate(r){
+  if(!gl3)return null;
+  const keep=JSON.parse(JSON.stringify(state));
+  Object.assign(state,r.s);sync();paintTexture(state,compute(state));
+  const blob=await gl3.capture();
+  Object.assign(state,keep);sync();
+  return blob;
+}
+function errMsg(e){const c=e&&e.code;return c==='not_granted'?'AIの利用が許可されませんでした。ページの「権限」から許可すると使えます。':c==='rate_limited'?'短時間に分析を繰り返したため、少し待ってからもう一度お試しください。':c==='image_rejected'?'この画像は受け付けられませんでした。別の写真でお試しください。':c==='cancelled'?'分析を中止しました。':'分析できませんでした。もう一度押すか、器が大きく写った写真でお試しください。'}
+async function runRefine(r){
+  const s=await getSample();if(!s||!gl3){showAna(r);return r}
+  if(anaCtl)anaCtl.abort();anaCtl=new AbortController();
+  try{
+    showSteps(1,'推定した調合をシミュレーターで描いています…');
+    const blob=await renderCandidate(r);
+    if(!blob){showAna(r);return r}
+    showSteps(2,'写真とシミュレーターを見比べて補正しています…');
+    const imgs=[...photos.map(p=>p.blob).slice(0,Math.max(1,maxImgs-1)),blob];
+    const raw=await s.json(prompt2(r),{images:imgs,signal:anaCtl.signal,modelTier:'complex',cache:false});
+    const r2=cleanAna(raw,r);r2.obs=r.obs;
+    const blob2=await renderCandidate(r2);if(renderURL)URL.revokeObjectURL(renderURL);renderURL=blob2?URL.createObjectURL(blob2):'';
+    lastAna=r2;showAna(r2);return r2;
+  }catch(e){if(e&&e.code==='cancelled')return r;const b=await renderCandidate(r);if(renderURL)URL.revokeObjectURL(renderURL);renderURL=b?URL.createObjectURL(b):'';showAna(r);toast('見比べての補正はできませんでした。最初の推定を表示しています');return r}
+  finally{anaCtl=null}
 }
 $('anaBtn').onclick=async()=>{
-  if(!photoBlob)return;openSheet();const out=$('anaOut');out.innerHTML='';
-  const ld=el('div','loading');ld.append(el('span','dot'),el('span',null,'釉の色・流れ・素地の見え方を読み取っています…'));out.append(ld);
+  if(!photos.length)return;openSheet();showSteps(0,'釉の色・流れ・口縁・素地を観察しています…');
   const s=await getSample();
-  if(!s){out.innerHTML='';out.append(el('p','empty','この閲覧環境ではAIによる画像分析を使えません。claude.aiにサインインした状態で開くと使えます。抽出した色見本は上に表示しています。'));return}
+  if(!s){const out=$('anaOut');out.innerHTML='';out.append(el('p','empty','この閲覧環境ではAIによる画像分析を使えません。claude.aiにサインインした状態で開くと使えます。器の部分から抽出した色見本は上に表示しています。'));return}
   if(anaCtl)anaCtl.abort();anaCtl=new AbortController();$('anaBtn').disabled=true;
-  try{const raw=await s.json(buildPrompt(),{images:[photoBlob],signal:anaCtl.signal,modelTier:'default',cache:false});showAna(cleanAna(raw))}
-  catch(e){out.innerHTML='';const c=e&&e.code;out.append(el('p','empty',c==='not_granted'?'AIの利用が許可されませんでした。ページの「権限」から許可すると使えます。':c==='rate_limited'?'短時間に分析を繰り返したため、少し待ってからもう一度お試しください。':c==='image_rejected'?'この画像は受け付けられませんでした。別の写真でお試しください。':c==='cancelled'?'分析を中止しました。':'分析できませんでした。もう一度押すか、器が大きく写った写真でお試しください。'))}
-  finally{$('anaBtn').disabled=!photoBlob;anaCtl=null}
+  try{
+    const raw=await s.json(prompt1(),{images:photos.map(p=>p.blob).slice(0,Math.max(1,maxImgs-1)),signal:anaCtl.signal,modelTier:'complex',cache:false});
+    const r=cleanAna(raw);anaCtl=null;
+    if(!r.isCeramic){showAna(r);return}
+    lastAna=r;await runRefine(r);
+  }catch(e){const out=$('anaOut');out.innerHTML='';out.append(el('p','empty',errMsg(e)))}
+  finally{$('anaBtn').disabled=!photos.length;anaCtl=null}
 };
 
 /* ================= rail ================= */
