@@ -308,6 +308,7 @@ html.fit body{padding-block:12px 12px}
           <div class="brow"><span class="m">太さ</span><div class="seg2" id="bSize"><button type="button" data-v=".25">細</button><button type="button" data-v=".6" aria-pressed="true">中</button><button type="button" data-v="1.3">太</button></div></div>
           <div class="brow"><span class="m">濃さ</span><div class="seg2" id="bFlow"><button type="button" data-v=".35">薄く</button><button type="button" data-v=".65" aria-pressed="true">普通</button><button type="button" data-v="1">厚く</button></div></div>
           <button type="button" class="btn" id="bBisque" style="height:36px;font-size:12.5px;width:100%">素焼きに戻して一から塗る</button>
+          <div class="brow"><span class="m">ろくろ</span><div class="seg2" id="bWheel"><button type="button" data-v="0">止める</button><button type="button" data-v=".08">ゆっくり</button><button type="button" data-v=".32" aria-pressed="true">普通</button></div></div>
           <div class="brow"><span class="m">道具</span><div class="seg2" id="bTool"><button type="button" data-v="paint" aria-pressed="true">塗る</button><button type="button" data-v="drip">垂らす</button><button type="button" data-v="erase">消す</button></div></div>
           <div class="brow"><button type="button" class="sbtn" id="bRim">縁から垂らす</button><button type="button" class="sbtn" id="bClear">全部消す</button></div>
         </div>
@@ -768,6 +769,8 @@ function crazeField(F){
 }
 /* brush layer: which glaze (BI), coverage (BA) and extra thickness (BT) per texel */
 const BI=new Uint8Array(TW*TH),BA=new Uint8Array(TW*TH),BT=new Uint8Array(TW*TH);
+/* live drips are drawn on their own layer each frame (DI/DA/DT), then baked into the brush layer when they stop */
+const DI=new Uint8Array(TW*TH),DA=new Uint8Array(TW*TH),DT=new Uint8Array(TW*TH);
 const BRUSH_GLAZES=[
   {n:'地の釉',r:{}},{n:'鉄釉',r:{col:'fe',amt:5,base:'clear'}},{n:'黒釉',r:{col:'fe',amt:9.5,base:'clear'}},{n:'銅',r:{col:'cu',amt:1.2,base:'clear'}},
   {n:'呉須',r:{col:'co',amt:1.5,base:'clear'}},{n:'トルコ',r:{col:'cu',amt:2.5,base:'alk'}},{n:'ルチル',r:{col:'ru',amt:4,base:'clear'}},
@@ -811,6 +814,10 @@ function paintTexture(s,r,Y0=0,Y1=TH-1){
         c=[lerp(c[0],cb[0],ba),lerp(c[1],cb[1],ba),lerp(c[2],cb[2],ba)];
         const coatB=clamp(rb.gloss*1.05*(1-(1-rb.melt)*.8)),roB=Math.max(clamp(1-rb.gloss*.93+(1-rb.melt)*.25,.04,1),.18+(1-rb.gloss)*.7);
         coat=lerp(coat,coatB,ba);ro=lerp(ro,roB,ba);h+=ba*(.04+BT[i]/255*.12)}
+      if(BR&&DA[i]){const da=DA[i]/255,rb=BR[DI[i]],tb=.6+DT[i]/255*1.1;
+        const cb=glazeColorN(rb,tb,F.n1[i],F.n2[i],F.n3[i],F.nS[i],F.n4[i],null,0);
+        c=[lerp(c[0],cb[0],da),lerp(c[1],cb[1],da),lerp(c[2],cb[2],da)];
+        coat=lerp(coat,Math.max(.6,clamp(rb.gloss*1.1)),da);ro=lerp(ro,Math.max(.06,.5-rb.gloss*.45),da);h+=da*(.06+DT[i]/255*.2)}
       d[o]=clamp(c[0],0,255);d[o+1]=clamp(c[1],0,255);d[o+2]=clamp(c[2],0,255);d[o+3]=255;
       q[o]=coat*255;q[o+1]=clamp(ro)*255;q[o+2]=0;q[o+3]=255;
       const hv=clamp(h)*255;bm[o]=hv;bm[o+1]=hv;bm[o+2]=hv;bm[o+3]=255;
@@ -884,7 +891,7 @@ function init3D(){
   const mat=new THREE.MeshPhysicalMaterial({map:glazeT,roughnessMap:rouT,roughness:1,metalness:0,envMapIntensity:.8,
     clearcoat:1,clearcoatMap:rouT,clearcoatRoughness:.07,bumpMap:bmpT,bumpScale:.32});
   let vessel=null;
-  const view={yaw:-.35,elev:.26,zoom:1,auto:!reduceMotion,vel:0,dirty:true};
+  const view={yaw:-.35,elev:.26,zoom:1,auto:!reduceMotion,vel:0,dirty:true,speed:.32};
   function setVessel(k){
     const P=makeProfile(k);
     if(vessel){spin.remove(vessel);vessel.geometry.dispose()}
@@ -903,7 +910,7 @@ function init3D(){
   new ResizeObserver(resize).observe(stage);resize();
   // brush
   const ray=new THREE.Raycaster(),ndc=new THREE.Vector2(),cursor=$('brushCursor');
-  let painting=null,dirty=null;
+  let painting=null,dirty=null,dRanges=[];
   function hitAt(cx,cy){if(!vessel)return null;const rc=stage.getBoundingClientRect();ndc.set((cx-rc.left)/rc.width*2-1,-(cy-rc.top)/rc.height*2+1);
     ray.setFromCamera(ndc,camera);const h=ray.intersectObject(vessel,false)[0];return h&&h.uv?h:null}
   function stampAt(x,y,F,P){stampDisk(x,y,brush.size,brush.flow,22,F,P,brush.erase)}
@@ -929,37 +936,83 @@ function init3D(){
     else stampAt(x,y,F,P);
     painting.last={x,y};
   }
-  /* drips (垂れ): a drop of glaze that runs down the wall, thin tail and a fat bead at the end */
+  /* drips (垂れ): each drip has a glaze volume; it slides down the wall at a speed that falls off as the
+     volume is used up (viscous flow), with a thin tail and a heavy bead at its head. */
   const drips=[];
-  function downDir(F,y){const a=F.rows[y],b=F.rows[Math.min(TH-1,y+1)],c=F.rows[Math.max(0,y-1)];return (b.h<a.h)?1:(c.h<a.h)?-1:0}
-  function dripMax(g){const r=brushResults(state)[g];return {len:(1.1+r.run*2.6)*(.7+brush.flow*.6),speed:(.7+r.run*1.1)*1.3}}
+  function downDir(F,y){const a=F.rows[y],b=F.rows[Math.min(TH-1,y+1)],c=F.rows[Math.max(0,y-1)];return (b.h<a.h-1e-6)?1:(c.h<a.h-1e-6)?-1:0}
+  function dripPhys(g){const r=brushResults(state)[g],run=clamp(r.run,0,2),melt=r.melt;
+    return {k:(.55+run*.55)*melt,feed:(.45+run*.75)*(.6+brush.flow*.6)*melt,max:(2.3+run*3.6)*(.7+brush.flow*.5)*melt+.3}}
+  function pxPerCm(F,y){return TW/(2*Math.PI*Math.max(.15,F.rows[y].r))}
+  function dStamp(x,y,rcm,rv,tk,g,ya,yb,F,P,toBrush){
+    const ry=Math.max(1,rcm*rv/P.total*TH),y0=Math.max(ya,Math.floor(y-ry)),y1=Math.min(yb,Math.ceil(y+ry));
+    for(let yy=y0;yy<=y1;yy++){const rx=Math.min(TW/2,Math.max(1,rcm*pxPerCm(F,yy))),dy=(yy-y)/ry,x0=Math.floor(x-rx),x1=Math.ceil(x+rx);
+      for(let xx=x0;xx<=x1;xx++){const dx=(xx-x)/rx,dd=dx*dx+dy*dy;if(dd>=1)continue;const X=((xx%TW)+TW)%TW,i=yy*TW+X;
+        const a=Math.min(1,(1-dd)*5)*255,t=tk*(.55+.45*Math.sqrt(1-dd));
+        if(toBrush){if(a>BA[i]*.9||BI[i]===g){BI[i]=g;BA[i]=Math.max(BA[i],a);BT[i]=Math.max(BT[i],t)}}
+        else{if(a>=DA[i]){DI[i]=g}DA[i]=Math.max(DA[i],a);DT[i]=Math.max(DT[i],t)}}}
+  }
+  function extendPath(d,F){
+    while(d.path[d.path.length-1].d<d.dist){
+      const last=d.path[d.path.length-1],dir=downDir(F,last.y);
+      if(!dir||['under','floor'].includes(F.rows[last.y+dir]&&F.rows[last.y+dir].type)){d.stuck=true;d.dist=last.d;break}
+      const ny=last.y+dir,ds=Math.abs(F.rows[ny].s-F.rows[last.y].s),nd=last.d+ds,pc=pxPerCm(F,ny);
+      const x=d.x0+(Math.sin(d.seed+nd*.9)*.07+Math.sin(d.seed*2.7+nd*2.6)*.025)*pc;
+      d.path.push({x,y:ny,d:nd,wob:.85+.3*hash(Math.round(nd*10),d.id,63)})}
+  }
+  function drawDrip(d,ya,yb,F,P,toBrush){
+    const L=Math.max(d.dist,.001),w=d.w,g=d.g,pts=d.path;
+    // source blob where the glaze was placed
+    dStamp(d.x0,pts[0].y,w*.75,1,70,g,ya,yb,F,P,toBrush);
+    // tail: thin at the top, widening toward the head; thickness grows toward the head
+    let lastD=-1;
+    for(const p of pts){if(p.d-lastD<w*.18&&p!==pts[pts.length-1])continue;lastD=p.d;
+      const ft=L-p.d,head=sm(w*1.4,0,ft),grow=Math.min(1,p.d/1.5);
+      dStamp(p.x,p.y,w*(.34+.14*grow+.16*head)*p.wob,1,70+90*grow+70*head,g,ya,yb,F,P,toBrush)}
+    // bead: heavy, slightly elongated drop at the head
+    const tip=pts[pts.length-1];
+    if(L>w*.4){dStamp(tip.x,tip.y,w*.66,1.3,235,g,ya,yb,F,P,toBrush);
+      const up=pts[Math.max(0,pts.length-1-Math.round(w*.5/Math.max(.01,(L/pts.length))))];dStamp(lerp(tip.x,up.x,.5),lerp(tip.y,up.y,.5),w*.56,1,205,g,ya,yb,F,P,toBrush)}
+  }
+  function tipSpan(d,P){const pad=Math.ceil(d.w*2.2/P.total*TH)+2,y=d.path[d.path.length-1].y;return [Math.max(0,y-pad),Math.min(TH-1,y+pad)]}
+  function rowSpan(d,P){const pad=Math.ceil(d.w*1.6/P.total*TH)+2;let a=1e9,b=-1;for(const p of [d.path[0],d.path[d.path.length-1]]){a=Math.min(a,p.y);b=Math.max(b,p.y)}return [Math.max(0,a-pad),Math.min(TH-1,b+pad)]}
+  function redrawRows(ya,yb,F,P){
+    DA.fill(0,ya*TW,(yb+1)*TW);DT.fill(0,ya*TW,(yb+1)*TW);
+    for(const d of drips){const [a,b]=rowSpan(d,P);if(b<ya||a>yb)continue;drawDrip(d,ya,yb,F,P,false)}
+    dRanges.push([ya,yb]);
+  }
+  let dripId=0;
   function spawnDrip(x,y,opt={}){
-    const F=makeFields(state.vessel),P=makeProfile(state.vessel),Y=Math.max(0,Math.min(TH-1,Math.round(y)));
-    if(['under','floor'].includes(F.rows[Y].type))return null;
-    const m=dripMax(brush.g),w=brush.size*(.55+.25*hash(Math.round(x),Y,61));
-    const d={x0:x,y:Y,fy:Y,dist:0,len:opt.len||m.len,speed:m.speed,w,seed:hash(Math.round(x),Y,62)*6.28,held:!opt.auto,post:.35,done:false,g:brush.g};
-    brushHas=true;stampDisk(x,Y,w*.95,1,60,F,P,false);drips.push(d);return d}
-  function growDrip(d,dt){
-    const F=makeFields(state.vessel),P=makeProfile(state.vessel);
-    let budget=d.speed*dt*(d.held?1:.6);
-    if(!d.held){budget=Math.min(budget,d.post);d.post-=budget}
-    const target=Math.min(d.len,d.dist+budget);
-    while(d.dist<target){
-      const dir=downDir(F,d.y);if(!dir||F.rows[d.y].type==='under'){d.dist=d.len;break}
-      const ny=d.y+dir,ds=Math.abs(F.rows[ny].s-F.rows[d.y].s);d.y=ny;d.dist+=ds;
-      const rr=Math.max(.15,F.rows[d.y].r),pxPerCm=TW/(2*Math.PI*rr),x=d.x0+Math.sin(d.seed+d.dist*1.6)*.12*pxPerCm+Math.sin(d.seed*2.3+d.dist*4.1)*.04*pxPerCm;
-      d.cx=x;stampDisk(x,d.y,d.w*(.42+.12*Math.min(1,d.dist/d.len)),.9,46,F,P,false)}
-    if(d.dist>=d.len||(!d.held&&d.post<=0)){
-      if(d.cx!==undefined){stampDisk(d.cx,d.y+downDir(F,d.y)*1,d.w*1.25,1,140,F,P,false);stampDisk(d.cx,d.y,d.w*.8,1,90,F,P,false)}
-      d.done=true}
+    const F=makeFields(state.vessel),Y=Math.max(0,Math.min(TH-1,Math.round(y)));
+    if(['under','floor'].includes(F.rows[Y].type)||!downDir(F,Y))return null;
+    const ph=dripPhys(brush.g),id=++dripId;
+    const d={id,x0:x,path:[{x,y:Y,d:0,wob:1}],dist:0,V:opt.V!==undefined?opt.V:.35,w:brush.size*(.7+.35*hash(id,7,61)),seed:hash(id,8,62)*6.28,
+      held:!opt.auto,g:brush.g,k:ph.k*(.85+.3*hash(id,9,64)),feed:ph.feed,max:ph.max*(opt.auto?1:(.85+.3*hash(id,10,65))),rest:0,done:false};
+    brushHas=true;drips.push(d);return d}
+  function stepDrips(dt){
+    if(!drips.length)return;const F=makeFields(state.vessel),P=makeProfile(state.vessel),spans=[];
+    for(const d of drips){if(d.done)continue;const [a0,b0]=tipSpan(d,P),n0=d.path.length,dist0=d.dist;
+      if(d.held)d.V=Math.min(d.max,d.V+d.feed*dt);
+      const v=Math.max(0,d.V-d.dist)*d.k+(d.V-d.dist>.02?.04:0);
+      d.dist=Math.min(d.V,d.dist+v*dt);extendPath(d,F);
+      if(!d.held&&(d.V-d.dist<.015||d.stuck)){d.rest+=dt;if(d.rest>.6)d.done=true}
+      if(d.path.length===n0&&Math.abs(d.dist-dist0)<1e-4&&d.drawn)continue;d.drawn=true;
+      const [a1,b1]=tipSpan(d,P);const sp=n0===1?rowSpan(d,P):[a1,b1];spans.push([Math.min(a0,a1,sp[0]),Math.max(b0,b1,sp[1])])}
+    // bake finished drips into the brush layer
+    for(let i=drips.length-1;i>=0;i--){const d=drips[i];if(!d.done)continue;const [a,b]=rowSpan(d,P);drawDrip(d,a,b,F,P,true);spans.push([a,b]);drips.splice(i,1)}
+    spans.sort((x,y)=>x[0]-y[0]);const merged=[];for(const sp of spans){const m=merged[merged.length-1];if(m&&sp[0]<=m[1]+1)m[1]=Math.max(m[1],sp[1]);else merged.push(sp.slice())}
+    for(const [a,b] of merged)redrawRows(a,b,F,P);
   }
   function rimDrips(){
     const F=makeFields(state.vessel),P=makeProfile(state.vessel);let y0=-1,best=1e9;
-    for(let y=0;y<TH;y++){const r=F.rows[y];if(r.type==='outer'){const dd=Math.abs(r.h-(P.rimH-.08));if(dd<best){best=dd;y0=y}}}
-    if(y0<0)return;const n=10+Math.floor(Math.random()*8),m=dripMax(brush.g);
-    for(let k=0;k<n;k++){const x=((k+.2+Math.random()*.6)/n)*TW;spawnDrip(x,y0,{auto:true,len:m.len*(.35+Math.random()*.75)})}
-    for(const d of drips)if(!d.done&&!d.held)d.post=d.len;
+    for(let y=0;y<TH;y++){const r=F.rows[y];if(r.type==='outer'){const dd=Math.abs(r.h-(P.rimH-.1));if(dd<best){best=dd;y0=y}}}
+    if(y0<0)return;const n=9+Math.floor(Math.random()*9),ph=dripPhys(brush.g);
+    // a wavy band of glaze along the rim feeds the drips
+    const keep={size:brush.size,flow:brush.flow};
+    for(let k=0;k<=200;k++){const x=k/200*TW,yy=y0+Math.sin(k*.7)*1.5+Math.sin(k*.23)*2;stampDisk(x,yy,brush.size*(.45+.2*hash(k,3,66)),.9,90,F,P,false)}
+    Object.assign(brush,keep);
+    for(let k=0;k<n;k++){const x=((k+.15+Math.random()*.7)/n)*TW,len=ph.max*(.2+Math.pow(Math.random(),1.2)*.85);spawnDrip(x,y0+1,{auto:true,V:len})}
   }
+  function clearDrips(){drips.length=0;DA.fill(0);DT.fill(0)}
   function dripAt(h){
     const x=h.uv.x*TW,y=(1-h.uv.y)*TH,F=makeFields(state.vessel),lp=painting.last;
     if(lp){let dx=Math.abs(x-lp.x);if(dx>TW/2)dx=TW-dx;const rr=Math.max(.15,F.rows[Math.max(0,Math.min(TH-1,Math.round(y)))].r),cm=dx/(TW/(2*Math.PI*rr))+Math.abs(y-lp.y)/TH*makeProfile(state.vessel).total;
@@ -1011,10 +1064,10 @@ function init3D(){
   let last=performance.now();
   function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;
     if(!drag){if(Math.abs(view.vel)>.0004){view.yaw+=view.vel;view.vel*=.92;view.dirty=true}else view.vel=0;
-      if(view.auto&&!reduceMotion){view.yaw+=dt*.32;view.dirty=true}}
+      if(view.auto&&!reduceMotion&&view.speed>0){view.yaw+=dt*view.speed;view.dirty=true}}
     if(painting&&view.dirty){spin.rotation.y=view.yaw;placeCam();spin.updateMatrixWorld();const h=hitAt(painting.cx,painting.cy);if(h){if(brush.tool==='drip')dripAt(h);else strokeTo(h)}else if(brush.tool!=='drip')painting.last=null}
-    if(drips.length){for(const d of drips)if(!d.done)growDrip(d,dt);for(let i=drips.length-1;i>=0;i--)if(drips[i].done)drips.splice(i,1)}
-    if(dirty){paintTexture(state,compute(state),dirty.y0,dirty.y1);dirty=null;glazeT.needsUpdate=true;rouT.needsUpdate=true;bmpT.needsUpdate=true;view.dirty=true}
+    stepDrips(dt);
+    if(dirty||dRanges.length){const rr=compute(state);if(dirty)paintTexture(state,rr,dirty.y0,dirty.y1);for(const [a,b] of dRanges)if(!dirty||a<dirty.y0||b>dirty.y1)paintTexture(state,rr,a,b);dirty=null;dRanges=[];glazeT.needsUpdate=true;rouT.needsUpdate=true;bmpT.needsUpdate=true;view.dirty=true}
     if(view.dirty&&view.fit){spin.rotation.y=view.yaw;placeCam();renderer.render(scene,camera);updateSpots();view.dirty=false}
     requestAnimationFrame(loop)}
   requestAnimationFrame(loop);
@@ -1027,7 +1080,7 @@ function init3D(){
   }
   function setAuto(v){view.auto=v;ab.setAttribute('aria-pressed',String(v))}
   function markAll(){dirty={y0:0,y1:TH-1}}
-  return {setVessel,capture,setAuto,markAll,rimDrips,isAuto:()=>view.auto,refresh(){glazeT.needsUpdate=true;rouT.needsUpdate=true;bmpT.needsUpdate=true;view.dirty=true},spots,
+  return {setVessel,capture,setAuto,markAll,rimDrips,clearDrips,setSpeed(v){view.speed=v},isAuto:()=>view.auto,refresh(){glazeT.needsUpdate=true;rouT.needsUpdate=true;bmpT.needsUpdate=true;view.dirty=true},spots,
     setLabels(arr){spots.forEach((sp,i)=>sp.span.textContent=arr[i]);view.dirty=true}};
 }
 const brush={on:false,g:3,size:.6,flow:.65,erase:false,tool:'paint'};
@@ -1036,7 +1089,7 @@ function toBisque(btn){
   if(brushHas&&!bisqueArm){bisqueArm=1;const old=btn.innerHTML;btn.dataset.old=old;btn.textContent='塗った釉も消えます。もう一度押す';btn.classList.add('danger');
     clearTimeout(bisqueT);bisqueT=setTimeout(()=>{bisqueArm=0;btn.innerHTML=btn.dataset.old;btn.classList.remove('danger')},3200);return}
   clearTimeout(bisqueT);if(bisqueArm){bisqueArm=0;btn.innerHTML=btn.dataset.old;btn.classList.remove('danger')}
-  BA.fill(0);BT.fill(0);brushHas=false;state.bisque=true;state.tint=null;sync();
+  BA.fill(0);BT.fill(0);if(gl3)gl3.clearDrips();brushHas=false;state.bisque=true;state.tint=null;sync();
   if(gl3&&!brush.on)$('brushBtn').click();
   toast('素焼きの状態に戻しました。筆で釉を塗ってみてください');
 }
@@ -1050,12 +1103,15 @@ if(gl3){
   window.markBrush=()=>{const R=brushResults(state);$('brushSw').querySelectorAll('button').forEach(b=>{const k=+b.dataset.k,r=R[k];b.setAttribute('aria-pressed',String(!brush.erase&&k===brush.g));b.querySelector('i').style.background=`radial-gradient(circle at 40% 35%, ${rgb(r.col)} 0 50%, ${rgb(r.thinCol)} 78%)`})};
   const seg=(id,key)=>$(id).querySelectorAll('button').forEach(b=>b.onclick=()=>{brush[key]=+b.dataset.v;$(id).querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))});
   seg('bSize','size');seg('bFlow','flow');
-  const TOOL_HINT={paint:'器をなぞると釉が塗れます。ろくろを回したまま筆を当てると線が引けます',drip:'器を押さえると釉が垂れます。長く押さえるほど長く垂れ、なぞると垂れが並びます',erase:'なぞった所の釉を消します'};
+  const TOOL_HINT={paint:'器をなぞると釉が塗れます。ろくろを回したまま筆を当てると線が引けます',drip:'器を押さえると釉が垂れます。押さえている間に釉が足され、離すとゆっくり止まります',erase:'なぞった所の釉を消します'};
   function setTool(t){brush.tool=t;brush.erase=t==='erase';$('bTool').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.v===t)));if(brush.on)hint.textContent=TOOL_HINT[t];markBrush()}
-  $('bTool').querySelectorAll('button').forEach(b=>b.onclick=()=>setTool(b.dataset.v));
+  $('bTool').querySelectorAll('button').forEach(b=>b.onclick=()=>{setTool(b.dataset.v);if(b.dataset.v==='drip'&&wheelSpeed>.1)setWheel(.08)});
+  let wheelSpeed=.32;
+  function setWheel(v){wheelSpeed=v;gl3.setSpeed(v);if(v>0&&!gl3.isAuto()&&!reduceMotion)gl3.setAuto(true);$('bWheel').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(+x.dataset.v===v)))}
+  $('bWheel').querySelectorAll('button').forEach(b=>b.onclick=()=>setWheel(+b.dataset.v));
   $('bRim').onclick=()=>{gl3.rimDrips();toast(`口縁から「${BRUSH_GLAZES[brush.g].n}」を垂らしました`)};
   let clearArm=0;$('bClear').onclick=()=>{if(!clearArm){clearArm=1;$('bClear').textContent='本当に消す';$('bClear').classList.add('danger');setTimeout(()=>{clearArm=0;$('bClear').textContent='全部消す';$('bClear').classList.remove('danger')},3000);return}
-    clearArm=0;$('bClear').textContent='全部消す';$('bClear').classList.remove('danger');BA.fill(0);BT.fill(0);brushHas=false;gl3.markAll();toast('塗った釉を消しました')};
+    clearArm=0;$('bClear').textContent='全部消す';$('bClear').classList.remove('danger');BA.fill(0);BT.fill(0);gl3.clearDrips();brushHas=false;gl3.markAll();toast('塗った釉を消しました')};
   btn.onclick=()=>{brush.on=!brush.on;btn.setAttribute('aria-pressed',String(brush.on));bb.hidden=!brush.on;stage.classList.toggle('brush',brush.on);$('hots').hidden=brush.on;
     hint.textContent=brush.on?TOOL_HINT[brush.tool]:'ドラッグで回転・上下で傾き';
     if(brush.on){markBrush();if(!gl3.isAuto()&&!reduceMotion)gl3.setAuto(true)}else $('brushCursor').hidden=true};
@@ -1255,7 +1311,7 @@ function sync(){
   drawChart(state);
   $('favName').placeholder=defaultName();
   if(gl3){
-    if(lastVessel!==state.vessel){if(lastVessel&&brushHas){BA.fill(0);BT.fill(0);brushHas=false;toast('器を変えたので、筆で塗った釉は消えました')}gl3.setVessel(state.vessel);lastVessel=state.vessel}
+    if(lastVessel!==state.vessel){if(lastVessel&&brushHas){BA.fill(0);BT.fill(0);gl3.clearDrips();brushHas=false;toast('器を変えたので、筆で塗った釉は消えました')}gl3.setVessel(state.vessel);lastVessel=state.vessel}
     if(brush.on&&window.markBrush)markBrush();
     gl3.setLabels([`口縁：釉が薄く${state.col==='none'?'素地が透ける':'色が淡くなる'}`,`${nm} ／ ${V.label}`,`高台：${CLAYS[state.clay].label}の素地`]);
     clearTimeout(rafTex);rafTex=setTimeout(()=>requestAnimationFrame(()=>{paintTexture(state,compute(state));gl3.refresh()}),HI?110:20);
